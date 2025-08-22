@@ -12,8 +12,12 @@ const PublicActivationPage = () => {
   const [language, setLanguage] = useState('en'); // 'en' or 'ar'
   const [ticketDetails, setTicketDetails] = useState(null);
   const [showTicketDetails, setShowTicketDetails] = useState(false);
+  const [pageLoaded, setPageLoaded] = useState(false);
 
   useEffect(() => {
+    console.log('PublicActivationPage: Component mounted');
+    setPageLoaded(true);
+    
     // Auto-focus on QR code input
     const qrInput = document.getElementById('qrCode');
     if (qrInput) {
@@ -322,6 +326,20 @@ const PublicActivationPage = () => {
       }, 5000);
     }
   };
+
+  // Show loading state if page hasn't loaded yet
+  if (!pageLoaded) {
+    return (
+      <div className="activation-page">
+        <div className="container">
+          <div className="loading">
+            <div className="spinner"></div>
+            <p>Loading activation page...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="activation-page" dir={language === 'ar' ? 'rtl' : 'ltr'}>
