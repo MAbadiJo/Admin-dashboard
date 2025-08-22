@@ -1,80 +1,220 @@
+/* Modern, Stunning Activation Page Design */
 .activation-page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Animated background elements */
+.activation-page::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255,255,255,0.1) 1px, transparent 1px);
+  background-size: 50px 50px;
+  animation: float 20s ease-in-out infinite;
+  z-index: 0;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-20px) rotate(180deg); }
 }
 
 .activation-page .container {
-  background: white;
-  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-radius: 24px;
   padding: 40px;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-  max-width: 500px;
+  box-shadow: 
+    0 25px 50px rgba(0,0,0,0.15),
+    0 0 0 1px rgba(255,255,255,0.1);
+  max-width: 700px;
   width: 100%;
   text-align: center;
+  position: relative;
+  z-index: 1;
+  border: 1px solid rgba(255,255,255,0.2);
 }
 
+/* Enhanced Logo */
 .activation-page .logo {
-  font-size: 32px;
-  font-weight: bold;
-  margin-bottom: 10px;
+  font-size: 36px;
+  font-weight: 800;
+  margin-bottom: 8px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  letter-spacing: 2px;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .activation-page .subtitle {
-  color: #666;
+  color: #64748b;
+  margin-bottom: 40px;
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+/* Enhanced Language Toggle */
+.language-toggle {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
   margin-bottom: 30px;
-  font-size: 16px;
+  z-index: 1000;
+  position: relative;
 }
 
-.activation-page .activation-form {
-  margin-bottom: 20px;
-}
-
-.activation-page .qr-input {
-  width: 100%;
-  padding: 15px;
-  border: 2px solid #e1e5e9;
-  border-radius: 10px;
-  font-size: 16px;
-  margin-bottom: 20px;
+.lang-btn {
+  padding: 12px 24px;
+  border: 2px solid #667eea;
+  background: transparent;
+  color: #667eea;
+  border-radius: 25px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 100px;
   text-align: center;
-  transition: border-color 0.3s;
-  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
 }
 
-.activation-page .qr-input:focus {
+.lang-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  transition: left 0.5s;
+}
+
+.lang-btn:hover::before {
+  left: 100%;
+}
+
+.lang-btn:hover {
+  background: #667eea;
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+}
+
+.lang-btn.active {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+  transform: translateY(-2px);
+}
+
+.lang-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+/* Enhanced Form */
+.activation-page .activation-form {
+  margin-bottom: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.activation-page .qr-input,
+.name-input,
+.amount-input {
+  width: 100%;
+  padding: 18px 20px;
+  border: 2px solid #e2e8f0;
+  border-radius: 16px;
+  font-size: 16px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-sizing: border-box;
+  text-align: center;
+  background: rgba(255,255,255,0.8);
+  backdrop-filter: blur(10px);
+  font-weight: 500;
+}
+
+.activation-page .qr-input:focus,
+.name-input:focus,
+.amount-input:focus {
   outline: none;
   border-color: #667eea;
+  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+  transform: translateY(-1px);
 }
 
-.activation-page .qr-input:disabled {
-  background-color: #f5f5f5;
+.activation-page .qr-input:disabled,
+.name-input:disabled,
+.amount-input:disabled {
+  background-color: #f8fafc;
   cursor: not-allowed;
+  opacity: 0.7;
 }
 
+.activation-page .qr-input::placeholder,
+.name-input::placeholder,
+.amount-input::placeholder {
+  color: #94a3b8;
+  font-weight: 400;
+}
+
+/* Enhanced Button */
 .activation-page .activate-btn {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border: none;
-  padding: 15px 30px;
-  border-radius: 10px;
-  font-size: 16px;
-  font-weight: bold;
+  padding: 18px 32px;
+  border-radius: 16px;
+  font-size: 18px;
+  font-weight: 700;
   cursor: pointer;
-  transition: transform 0.2s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   width: 100%;
+  position: relative;
+  overflow: hidden;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.activation-page .activate-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  transition: left 0.5s;
+}
+
+.activation-page .activate-btn:hover:not(:disabled)::before {
+  left: 100%;
 }
 
 .activation-page .activate-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 30px rgba(102, 126, 234, 0.4);
+}
+
+.activation-page .activate-btn:active:not(:disabled) {
+  transform: translateY(-1px);
 }
 
 .activation-page .activate-btn:disabled {
@@ -83,44 +223,108 @@
   transform: none;
 }
 
-.activation-page .result {
-  margin-top: 20px;
-  padding: 15px;
-  border-radius: 10px;
-  font-weight: bold;
+/* Ticket Details Section */
+.ticket-details-section {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: 20px;
+  padding: 30px;
+  margin: 30px 0;
+  border: 2px solid #e2e8f0;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+  animation: slideIn 0.5s ease-out;
 }
 
-.activation-page .result.success {
-  background: #d4edda;
-  color: #155724;
-  border: 1px solid #c3e6cb;
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.activation-page .result.error {
-  background: #f8d7da;
-  color: #721c24;
-  border: 1px solid #f5c6cb;
+.ticket-details-section h3 {
+  color: #1e293b;
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 25px;
+  text-align: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-.activation-page .result.info {
-  background: #d1ecf1;
-  color: #0c5460;
-  border: 1px solid #bee5eb;
+/* Activity Image */
+.activity-image-container {
+  text-align: center;
+  margin-bottom: 25px;
 }
 
+.activity-image {
+  width: 200px;
+  height: 150px;
+  object-fit: cover;
+  border-radius: 16px;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+  border: 3px solid #ffffff;
+  transition: transform 0.3s ease;
+}
+
+.activity-image:hover {
+  transform: scale(1.05);
+}
+
+/* Ticket Information */
+.ticket-info {
+  background: rgba(255,255,255,0.8);
+  border-radius: 16px;
+  padding: 25px;
+  margin-bottom: 25px;
+  border: 1px solid #e2e8f0;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.info-row:last-child {
+  border-bottom: none;
+}
+
+.info-row strong {
+  color: #1e293b;
+  font-weight: 600;
+  min-width: 120px;
+  text-align: left;
+}
+
+.info-row:not(:last-child) {
+  margin-bottom: 8px;
+}
+
+/* Enhanced Loading */
 .activation-page .loading {
-  margin: 20px 0;
+  margin: 30px 0;
   text-align: center;
 }
 
 .activation-page .spinner {
-  border: 3px solid #f3f3f3;
-  border-top: 3px solid #667eea;
+  border: 4px solid #f3f4f6;
+  border-top: 4px solid #667eea;
   border-radius: 50%;
-  width: 30px;
-  height: 30px;
+  width: 40px;
+  height: 40px;
   animation: spin 1s linear infinite;
-  margin: 0 auto 10px;
+  margin: 0 auto 15px;
 }
 
 @keyframes spin {
@@ -128,96 +332,279 @@
   100% { transform: rotate(360deg); }
 }
 
-.activation-page .instructions {
-  background: #f8f9fa;
+/* Enhanced Results */
+.activation-page .result {
+  margin-top: 25px;
   padding: 20px;
-  border-radius: 10px;
-  margin-top: 30px;
+  border-radius: 16px;
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1.6;
+  border: 2px solid transparent;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.activation-page .result.success {
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  color: #065f46;
+  border-color: #10b981;
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.2);
+}
+
+.activation-page .result.error {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  color: #991b1b;
+  border-color: #ef4444;
+  box-shadow: 0 4px 15px rgba(239, 68, 68, 0.2);
+}
+
+.activation-page .result.info {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  color: #1e40af;
+  border-color: #3b82f6;
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.2);
+}
+
+/* Enhanced Instructions */
+.activation-page .instructions {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  padding: 25px;
+  border-radius: 16px;
+  margin-top: 35px;
   text-align: left;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.05);
 }
 
 .activation-page .instructions h3 {
-  color: #333;
-  margin-bottom: 10px;
+  color: #1e293b;
+  margin-bottom: 15px;
+  font-size: 18px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.activation-page .instructions h3::before {
+  content: '📋';
+  font-size: 20px;
 }
 
 .activation-page .instructions ol {
-  color: #666;
-  line-height: 1.6;
+  color: #475569;
+  line-height: 1.8;
   margin: 0;
-  padding-left: 20px;
+  padding-left: 25px;
+  counter-reset: instruction-counter;
 }
 
 .activation-page .instructions li {
-  margin-bottom: 8px;
+  margin-bottom: 12px;
+  position: relative;
+  font-weight: 500;
+  counter-increment: instruction-counter;
 }
 
+.activation-page .instructions li::marker {
+  color: #667eea;
+  font-weight: 700;
+}
+
+/* Enhanced Footer */
 .activation-page .footer {
-  margin-top: 30px;
-  color: #666;
+  margin-top: 35px;
+  color: #64748b;
   font-size: 14px;
+  line-height: 1.6;
 }
 
 .activation-page .footer p {
-  margin: 5px 0;
+  margin: 8px 0;
+  font-weight: 500;
+}
+
+.activation-page .footer p:first-child {
+  color: #475569;
+  font-weight: 600;
+}
+
+/* RTL Support */
+[dir="rtl"] .activation-form {
+  text-align: right;
+}
+
+[dir="rtl"] .instructions ol {
+  text-align: right;
+  padding-right: 25px;
+  padding-left: 0;
+}
+
+[dir="rtl"] .language-toggle {
+  flex-direction: row-reverse;
+}
+
+[dir="rtl"] .info-row {
+  flex-direction: row-reverse;
+}
+
+[dir="rtl"] .info-row strong {
+  text-align: right;
 }
 
 /* Responsive Design */
-@media (max-width: 480px) {
+@media (max-width: 640px) {
   .activation-page .container {
-    padding: 20px;
+    padding: 30px 20px;
+    margin: 10px;
   }
   
   .activation-page .logo {
-    font-size: 24px;
+    font-size: 28px;
   }
   
-  .activation-page .qr-input {
-    font-size: 14px;
-    padding: 12px;
+  .activation-page .subtitle {
+    font-size: 16px;
+  }
+  
+  .activation-page .qr-input,
+  .name-input,
+  .amount-input {
+    font-size: 16px;
+    padding: 16px 18px;
   }
   
   .activation-page .activate-btn {
+    font-size: 16px;
+    padding: 16px 24px;
+  }
+  
+  .lang-btn {
+    padding: 10px 20px;
     font-size: 14px;
-    padding: 12px 20px;
+    min-width: 80px;
+  }
+
+  .ticket-details-section {
+    padding: 20px;
+  }
+
+  .activity-image {
+    width: 150px;
+    height: 120px;
+  }
+
+  .info-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+  }
+
+  .info-row strong {
+    min-width: auto;
   }
 }
 
 /* Dark mode support */
 @media (prefers-color-scheme: dark) {
   .activation-page .container {
-    background: #1a1a1a;
+    background: rgba(15, 23, 42, 0.95);
     color: #ffffff;
+    border-color: rgba(255,255,255,0.1);
   }
   
   .activation-page .subtitle {
-    color: #cccccc;
+    color: #cbd5e1;
   }
   
-  .activation-page .qr-input {
-    background: #2a2a2a;
-    border-color: #444;
+  .activation-page .qr-input,
+  .name-input,
+  .amount-input {
+    background: rgba(30, 41, 59, 0.8);
+    border-color: #475569;
     color: #ffffff;
   }
   
-  .activation-page .qr-input:focus {
+  .activation-page .qr-input:focus,
+  .name-input:focus,
+  .amount-input:focus {
     border-color: #667eea;
   }
   
+  .activation-page .qr-input::placeholder,
+  .name-input::placeholder,
+  .amount-input::placeholder {
+    color: #64748b;
+  }
+  
+  .ticket-details-section {
+    background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+    border-color: #475569;
+  }
+
+  .ticket-info {
+    background: rgba(30, 41, 59, 0.8);
+    border-color: #475569;
+  }
+
   .activation-page .instructions {
-    background: #2a2a2a;
+    background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+    border-color: #475569;
   }
   
   .activation-page .instructions h3 {
-    color: #ffffff;
+    color: #f1f5f9;
   }
   
   .activation-page .instructions ol {
-    color: #cccccc;
+    color: #cbd5e1;
   }
   
   .activation-page .footer {
-    color: #cccccc;
+    color: #94a3b8;
   }
+  
+  .activation-page .footer p:first-child {
+    color: #cbd5e1;
+  }
+
+  .info-row {
+    border-bottom-color: #475569;
+  }
+
+  .info-row strong {
+    color: #f1f5f9;
+  }
+}
+
+/* Smooth animations for all interactive elements */
+* {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Focus styles for accessibility */
+.activation-page input:focus,
+.activation-page button:focus {
+  outline: 2px solid #667eea;
+  outline-offset: 2px;
+}
+
+/* Hover effects for better UX */
+.activation-page .container:hover {
+  transform: translateY(-2px);
+  box-shadow: 
+    0 30px 60px rgba(0,0,0,0.2),
+    0 0 0 1px rgba(255,255,255,0.15);
 }
 
