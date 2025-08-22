@@ -57,6 +57,7 @@ const PublicActivationPage = () => {
       successTitle: '✅ Ticket Activated Successfully!',
       customer: 'Customer:',
       activity: 'Activity:',
+      ticketName: 'Ticket Type:',
       time: 'Time:',
       amount: 'Amount:',
       successMessage: 'The ticket has been marked as used and the customer can now access the activity.',
@@ -71,7 +72,11 @@ const PublicActivationPage = () => {
       ticketPrice: 'Ticket Price:',
       requiresCashCollection: 'This ticket requires cash collection',
       cashOnArrival: 'Cash on Arrival',
-      alreadyPaid: 'Already Paid'
+      alreadyPaid: 'Already Paid',
+      ticketUsed: 'This ticket has already been used',
+      ticketUsedMessage: 'This ticket was used by {name} on {date}',
+      ticketNotFound: 'Ticket not found',
+      ticketNotFoundMessage: 'The QR code you scanned does not match any active ticket.'
     },
     ar: {
       title: 'بسمة جو',
@@ -99,6 +104,7 @@ const PublicActivationPage = () => {
       successTitle: '✅ تم تفعيل التذكرة بنجاح!',
       customer: 'العميل:',
       activity: 'النشاط:',
+      ticketName: 'نوع التذكرة:',
       time: 'الوقت:',
       amount: 'المبلغ:',
       successMessage: 'تم تمييز التذكرة كمستخدمة ويمكن للعميل الآن الوصول إلى النشاط.',
@@ -113,7 +119,11 @@ const PublicActivationPage = () => {
       ticketPrice: 'سعر التذكرة:',
       requiresCashCollection: 'هذه التذكرة تتطلب تحصيل نقدي',
       cashOnArrival: 'الدفع عند الوصول',
-      alreadyPaid: 'مدفوع مسبقاً'
+      alreadyPaid: 'مدفوع مسبقاً',
+      ticketUsed: 'هذه التذكرة مستخدمة بالفعل',
+      ticketUsedMessage: 'تم استخدام هذه التذكرة بواسطة {name} في {date}',
+      ticketNotFound: 'التذكرة غير موجودة',
+      ticketNotFoundMessage: 'رمز QR الذي مسحته لا يتطابق مع أي تذكرة نشطة.'
     }
   };
 
@@ -188,6 +198,17 @@ const PublicActivationPage = () => {
               <strong>${t.ticketPrice}</strong> ${ticketInfo.ticket_price || 0} JOD<br><br>
               Please enter the collected amount and your name to proceed.
             `, 'info');
+          } else if (ticketInfo.message === 'Ticket already used') {
+            // Show used ticket details
+            setTicketDetails(ticketInfo);
+            setShowTicketDetails(true);
+            showResult(`
+              <strong>❌ ${t.ticketUsed}</strong><br><br>
+              <strong>${t.activity}</strong> ${ticketInfo.activity_title || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+              <strong>${t.customer}</strong> ${ticketInfo.customer_name || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+              <strong>${t.ticketPrice}</strong> ${ticketInfo.ticket_price || 0} JOD<br><br>
+              ${t.ticketUsedMessage.replace('{name}', ticketInfo.used_by || 'Unknown').replace('{date}', ticketInfo.used_at ? new Date(ticketInfo.used_at).toLocaleString() : 'Unknown')}
+            `, 'error');
           } else {
             showResult(`❌ ${ticketInfo.message}`, 'error');
           }
@@ -372,7 +393,16 @@ const PublicActivationPage = () => {
                 <strong>{t.activity}:</strong> {ticketDetails.activity_title || (language === 'ar' ? 'غير محدد' : 'Not specified')}
               </div>
               <div className="info-row">
+                <strong>{t.ticketName}:</strong> {ticketDetails.ticket_type || (language === 'ar' ? 'غير محدد' : 'Not specified')}
+              </div>
+              <div className="info-row">
                 <strong>{t.customer}:</strong> {ticketDetails.customer_name || (language === 'ar' ? 'غير محدد' : 'Not specified')}
+              </div>
+              <div className="info-row">
+                <strong>Email:</strong> {ticketDetails.customer_email || (language === 'ar' ? 'غير محدد' : 'Not specified')}
+              </div>
+              <div className="info-row">
+                <strong>Phone:</strong> {ticketDetails.customer_phone || (language === 'ar' ? 'غير محدد' : 'Not specified')}
               </div>
               <div className="info-row">
                 <strong>{t.paymentMethod}:</strong> {ticketDetails.payment_method === 'cash_on_arrival' ? t.cashOnArrival : t.alreadyPaid}
@@ -382,47 +412,49 @@ const PublicActivationPage = () => {
               </div>
             </div>
 
-            {/* Activation Form */}
-            <form onSubmit={handleActivateTicket} className="activation-form">
-              <input 
-                type="text" 
-                id="activatorName"
-                value={activatorName}
-                onChange={(e) => setActivatorName(e.target.value)}
-                className="name-input" 
-                placeholder={t.namePlaceholder}
-                required
-                autoComplete="off"
-                disabled={loading}
-              />
-              
-              {/* Cash Collection Field - Only show for cash on arrival */}
-              {ticketDetails.payment_method === 'cash_on_arrival' && (
+            {/* Activation Form - Only show if ticket is not already used */}
+            {ticketDetails.message !== 'Ticket already used' && (
+              <form onSubmit={handleActivateTicket} className="activation-form">
                 <input 
-                  type="number" 
-                  id="collectedAmount"
-                  value={collectedAmount}
-                  onChange={(e) => setCollectedAmount(e.target.value)}
-                  className="amount-input" 
-                  placeholder={`${t.amountPlaceholder} (${ticketDetails.ticket_price} JOD)`}
-                  min={ticketDetails.ticket_price}
-                  step="0.01"
+                  type="text" 
+                  id="activatorName"
+                  value={activatorName}
+                  onChange={(e) => setActivatorName(e.target.value)}
+                  className="name-input" 
+                  placeholder={t.namePlaceholder}
                   required
                   autoComplete="off"
                   disabled={loading}
                 />
-              )}
-              
-              <button 
-                type="submit" 
-                className="activate-btn" 
-                disabled={loading}
-              >
-                {loading ? t.activatingButton : 
-                  (ticketDetails.payment_method === 'cash_on_arrival' ? t.confirmCollectionButton : t.activateButton)
-                }
-              </button>
-            </form>
+                
+                {/* Cash Collection Field - Only show for cash on arrival */}
+                {ticketDetails.payment_method === 'cash_on_arrival' && (
+                  <input 
+                    type="number" 
+                    id="collectedAmount"
+                    value={collectedAmount}
+                    onChange={(e) => setCollectedAmount(e.target.value)}
+                    className="amount-input" 
+                    placeholder={`${t.amountPlaceholder} (${ticketDetails.ticket_price} JOD)`}
+                    min={ticketDetails.ticket_price}
+                    step="0.01"
+                    required
+                    autoComplete="off"
+                    disabled={loading}
+                  />
+                )}
+                
+                <button 
+                  type="submit" 
+                  className="activate-btn" 
+                  disabled={loading}
+                >
+                  {loading ? t.activatingButton : 
+                    (ticketDetails.payment_method === 'cash_on_arrival' ? t.confirmCollectionButton : t.activateButton)
+                  }
+                </button>
+              </form>
+            )}
           </div>
         )}
 
