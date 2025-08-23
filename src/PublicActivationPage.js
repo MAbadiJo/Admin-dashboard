@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import './WebActivationPage.css'; // Reuse the same CSS
 import { supabase } from './supabaseClient';
 
-// Enhanced Public Activation Page - Updated for latest deployment
+// Enhanced Public Activation Page - Updated for latest deployment - Force Vercel rebuild
 const PublicActivationPage = () => {
   const [qrCode, setQrCode] = useState('');
   const [activatorName, setActivatorName] = useState('');
