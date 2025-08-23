@@ -507,4 +507,3 @@ const PublicActivationPage = () => {
 };
 
 export default PublicActivationPage;
-
