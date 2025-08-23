@@ -155,21 +155,21 @@ const PublicActivationPage = () => {
     try {
       console.log('Checking ticket with QR code:', qrCode.trim());
       
-      // Call Supabase RPC to get ticket details
-      const { data, error } = await supabase.rpc('activate_ticket', {
-        qr_code_param: qrCode.trim(),
-        activated_by_param: null,
-        device_info_param: {
-          platform: 'web',
-          userAgent: navigator.userAgent,
-          timestamp: new Date().toISOString()
-        },
-        location_info_param: {
-          timestamp: new Date().toISOString(),
-          source: 'public_web'
-        },
-        collected_amount_param: null
-      });
+             // Call Supabase RPC to get ticket details
+       const { data, error } = await supabase.rpc('activate_booking_ticket', {
+         qr_code_param: qrCode.trim(),
+         activated_by_param: null,
+         device_info_param: {
+           platform: 'web',
+           userAgent: navigator.userAgent,
+           timestamp: new Date().toISOString()
+         },
+         location_info_param: {
+           timestamp: new Date().toISOString(),
+           source: 'public_web'
+         },
+         collected_amount_param: null
+       });
       
       console.log('RPC Response:', { data, error });
 
@@ -256,22 +256,22 @@ const PublicActivationPage = () => {
     try {
       console.log('Activating ticket with QR code:', qrCode.trim());
       
-      // Call Supabase RPC to activate ticket
-      const { data, error } = await supabase.rpc('activate_ticket', {
-        qr_code_param: qrCode.trim(),
-        activated_by_param: activatorName.trim(),
-        device_info_param: {
-          platform: 'web',
-          userAgent: navigator.userAgent,
-          timestamp: new Date().toISOString(),
-          activator_name: activatorName.trim()
-        },
-        location_info_param: {
-          timestamp: new Date().toISOString(),
-          source: 'public_web'
-        },
-        collected_amount_param: ticketDetails?.payment_method === 'cash_on_arrival' ? parseFloat(collectedAmount) : null
-      });
+             // Call Supabase RPC to activate ticket
+       const { data, error } = await supabase.rpc('activate_booking_ticket', {
+         qr_code_param: qrCode.trim(),
+         activated_by_param: activatorName.trim(),
+         device_info_param: {
+           platform: 'web',
+           userAgent: navigator.userAgent,
+           timestamp: new Date().toISOString(),
+           activator_name: activatorName.trim()
+         },
+         location_info_param: {
+           timestamp: new Date().toISOString(),
+           source: 'public_web'
+         },
+         collected_amount_param: ticketDetails?.payment_method === 'cash_on_arrival' ? parseFloat(collectedAmount) : null
+       });
       
       console.log('RPC Response:', { data, error });
 
