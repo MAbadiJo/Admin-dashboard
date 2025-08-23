@@ -505,5 +505,4 @@ const PublicActivationPage = () => {
     </div>
   );
 };
-
 export default PublicActivationPage;
