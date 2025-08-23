@@ -18,6 +18,7 @@ import RequestsPage from './pages/RequestsPage';
 import SalesDashboardPage from './pages/SalesDashboardPage';
 import UsersManagementPage from './pages/UsersManagementPage';
 import PublicActivationPage from './PublicActivationPage'; // Public activation page (no login required)
+import TestActivationPage from './TestActivationPage'; // Test page
 import WebActivationPage from './WebActivationPage'; // New import for Ticket Activation
 
 // Layout for authenticated pages
@@ -250,6 +251,7 @@ function App() {
         <Route path="/bookings" element={<ProtectedRoute><BookingPage /></ProtectedRoute>} /> {/* New route */}
         <Route path="/activate" element={<ProtectedRoute><WebActivationPage /></ProtectedRoute>} /> {/* Admin activation route */}
         <Route path="/ticket" element={<PublicActivationPage />} /> {/* Public activation route - no login required */}
+        <Route path="/test" element={<TestActivationPage />} /> {/* Test route - no login required */}
         <Route path="/logs" element={<ProtectedRoute allowedRoles={['super_admin']}><LogsPage /></ProtectedRoute>} />
         <Route path="/admin-users" element={<ProtectedRoute allowedRoles={['super_admin']}><AdminUsersManagementPage /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><MyProfilePage /></ProtectedRoute>} />
