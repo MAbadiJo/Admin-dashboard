@@ -3,6 +3,7 @@ import { Link, Navigate, Route, BrowserRouter as Router, Routes } from 'react-ro
 import { supabase } from './supabaseClient';
 
 // Import pages
+import NewPublicActivationPage from './NewPublicActivationPage'; // New secure activation page
 import ActivitiesManagement from './pages/ActivitiesManagement';
 import AdminUsersManagementPage from './pages/AdminUsersManagementPage';
 import BookingPage from './pages/BookingPage'; // New import for Bookings
@@ -17,7 +18,6 @@ import PartnersManagement from './pages/PartnersManagement';
 import RequestsPage from './pages/RequestsPage';
 import SalesDashboardPage from './pages/SalesDashboardPage';
 import UsersManagementPage from './pages/UsersManagementPage';
-import PublicActivationPage from './PublicActivationPage'; // Public activation page (no login required)
 import TestActivationPage from './TestActivationPage'; // Test page
 import WebActivationPage from './WebActivationPage'; // New import for Ticket Activation
 
@@ -250,7 +250,7 @@ function App() {
         <Route path="/requests" element={<ProtectedRoute><RequestsPage /></ProtectedRoute>} />
         <Route path="/bookings" element={<ProtectedRoute><BookingPage /></ProtectedRoute>} /> {/* New route */}
         <Route path="/activate" element={<ProtectedRoute><WebActivationPage /></ProtectedRoute>} /> {/* Admin activation route */}
-        <Route path="/ticket" element={<PublicActivationPage />} /> {/* Public activation route - no login required */}
+        <Route path="/ticket" element={<NewPublicActivationPage />} /> {/* New secure activation route */}
         <Route path="/test" element={<TestActivationPage />} /> {/* Test route - no login required */}
         <Route path="/logs" element={<ProtectedRoute allowedRoles={['super_admin']}><LogsPage /></ProtectedRoute>} />
         <Route path="/admin-users" element={<ProtectedRoute allowedRoles={['super_admin']}><AdminUsersManagementPage /></ProtectedRoute>} />
