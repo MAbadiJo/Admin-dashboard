@@ -216,7 +216,7 @@ const PublicActivationPage = () => {
                <strong style="color: #374151;">📧 ${t.email}</strong> ${ticketInfo.customer_email || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
                <strong style="color: #374151;">📱 ${t.phone}</strong> ${ticketInfo.customer_phone || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
                <strong style="color: #374151;">🎭 ${t.ticketType}</strong> ${ticketInfo.ticket_type || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-               <strong style="color: #374151;">💰 ${t.ticketPrice}</strong> ${ticketInfo.unit_price || 0} JOD<br>
+               <strong style="color: #374151;">💰 ${t.ticketPrice}</strong> ${ticketInfo.total_amount || ticketInfo.unit_price || 0} JOD<br>
                <strong style="color: #374151;">💳 ${t.paymentMethod}</strong> ${ticketInfo.payment_method === 'cash_on_arrival' ? t.cashOnArrival : t.alreadyPaid}<br><br>
                <div style="background: #10b981; color: white; padding: 8px; border-radius: 6px; font-weight: bold;">
                  ${ticketInfo.payment_method === 'cash_on_arrival' ? t.requiresCashCollection : '✅ Ready to activate'}
@@ -245,7 +245,7 @@ const PublicActivationPage = () => {
                 <strong style="color: #374151;">👤 ${t.customer}</strong> ${ticketInfo.customer_name || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
                 <strong style="color: #374151;">📧 ${t.email}</strong> ${ticketInfo.customer_email || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
                 <strong style="color: #374151;">📱 ${t.phone}</strong> ${ticketInfo.customer_phone || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-                <strong style="color: #374151;">💰 ${t.ticketPrice}</strong> ${ticketInfo.total_amount || 0} JOD<br><br>
+                <strong style="color: #374151;">💰 ${t.ticketPrice}</strong> ${ticketInfo.total_amount || ticketInfo.unit_price || 0} JOD<br><br>
                 <div style="background: #f59e0b; color: white; padding: 8px; border-radius: 6px; font-weight: bold;">
                   Please enter the collected amount and your name to proceed.
                 </div>
@@ -272,7 +272,7 @@ const PublicActivationPage = () => {
                 <strong style="color: #374151;">👤 ${t.customer}</strong> ${ticketInfo.customer_name || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
                 <strong style="color: #374151;">📧 ${t.email}</strong> ${ticketInfo.customer_email || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
                 <strong style="color: #374151;">📱 ${t.phone}</strong> ${ticketInfo.customer_phone || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-                <strong style="color: #374151;">💰 ${t.ticketPrice}</strong> ${ticketInfo.ticket_price || 0} JOD<br><br>
+                <strong style="color: #374151;">💰 ${t.ticketPrice}</strong> ${ticketInfo.total_amount || ticketInfo.unit_price || 0} JOD<br><br>
                 <div style="background: #ef4444; color: white; padding: 8px; border-radius: 6px; font-weight: bold;">
                   ${t.ticketUsedMessage.replace('{name}', ticketInfo.used_by || 'Unknown').replace('{date}', ticketInfo.used_at ? new Date(ticketInfo.used_at).toLocaleString() : 'Unknown')}
                 </div>
