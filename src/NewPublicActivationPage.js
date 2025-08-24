@@ -169,127 +169,169 @@ const PublicActivationPage = () => {
     try {
       console.log('Checking ticket with QR code:', qrCode.trim());
       
-             // Call Supabase RPC to get individual ticket details
-       const { data, error } = await supabase.rpc('activate_individual_ticket', {
-         qr_code_param: qrCode.trim(),
-         activated_by_param: null,
-         device_info_param: {
-           platform: 'web',
-           userAgent: navigator.userAgent,
-           timestamp: new Date().toISOString()
-         },
-         location_info_param: {
-           timestamp: new Date().toISOString(),
-           source: 'public_web'
-         },
-         collected_amount_param: null
-       });
+      // First get the ticket details
+      const { data: ticketData, error: ticketError } = await supabase
+        .from('tickets')
+        .select('*')
+        .eq('qr_code', qrCode.trim())
+        .single();
       
-      console.log('RPC Response:', { data, error });
+      console.log('Ticket Query Response:', { ticketData, ticketError });
 
-      if (error) {
-        console.error('Ticket check error:', error);
-        showResult(`❌ ${language === 'ar' ? 'خطأ:' : 'Error:'} ${error.message}`, 'error');
-      } else if (data) {
-        const ticketInfo = data;
+      if (ticketError) {
+        console.error('Ticket check error:', ticketError);
         
-        if (ticketInfo.success) {
+        // If ticket not found, show error
+        if (ticketError.code === 'PGRST116') {
+          showResult(`❌ ${t.ticketNotFound}: ${t.ticketNotFoundMessage}`, 'error');
+        } else {
+          showResult(`❌ ${language === 'ar' ? 'خطأ:' : 'Error:'} ${ticketError.message}`, 'error');
+        }
+      } else if (ticketData) {
+        const ticket = ticketData;
+        
+        // Get booking details
+        const { data: bookingData, error: bookingError } = await supabase
+          .from('bookings')
+          .select('*')
+          .eq('id', ticket.booking_id)
+          .single();
+        
+        if (bookingError) {
+          console.error('Booking query error:', bookingError);
+          showResult(`❌ ${language === 'ar' ? 'خطأ:' : 'Error:'} Could not load booking details`, 'error');
+          return;
+        }
+        
+        const booking = bookingData;
+        
+        // Get profile details
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('name, email, phone')
+          .eq('id', booking.user_id)
+          .single();
+        
+        if (profileError) {
+          console.error('Profile query error:', profileError);
+          // Continue without profile data
+        }
+        
+        const profile = profileData;
+        
+        // Get activity details
+        const { data: activityData, error: activityError } = await supabase
+          .from('activities')
+          .select('title, title_ar, location, location_ar, image_url, price')
+          .eq('id', booking.activity_id)
+          .single();
+        
+        if (activityError) {
+          console.error('Activity query error:', activityError);
+          // Continue without activity data
+        }
+        
+        const activity = activityData;
+        
+        // Check if ticket is already used
+        if (ticket.status === 'used') {
+          const usedTicketInfo = {
+            success: false,
+            message: 'Ticket already used',
+            ticket_number: ticket.ticket_number,
+            booking_number: booking?.booking_number,
+            activity_title: activity?.title,
+            activity_location: activity?.location,
+            customer_name: profile?.name,
+            customer_email: profile?.email,
+            customer_phone: profile?.phone,
+            ticket_type: ticket.ticket_type,
+            total_amount: booking?.total_amount,
+            payment_method: booking?.payment_method,
+            used_by: ticket.activated_by,
+            used_at: ticket.activated_at,
+            activity_image: activity?.image_url
+          };
+          
+          setTicketDetails(usedTicketInfo);
+          setShowTicketDetails(true);
+          
+          const usedTicketDisplay = `
+            <div style="text-align: center; margin-bottom: 20px;">
+              ${activity?.image_url ? 
+                `<img src="${activity.image_url}" alt="Activity" style="width: 120px; height: 80px; object-fit: cover; border-radius: 8px; margin-bottom: 10px;">` : 
+                '<div style="width: 120px; height: 80px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px;"><span style="color: #6b7280;">No Image</span></div>'
+              }
+            </div>
+            <div style="background: #fef2f2; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #ef4444;">
+              <strong style="color: #dc2626;">❌ ${t.ticketUsed}</strong><br><br>
+              <strong style="color: #374151;">${t.activity}</strong> ${activity?.title || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+              <strong style="color: #374151;">📍 ${t.location}</strong> ${activity?.location || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+              <strong style="color: #374151;">👤 ${t.customer}</strong> ${profile?.name || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+              <strong style="color: #374151;">📧 ${t.email}</strong> ${profile?.email || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+              <strong style="color: #374151;">📱 ${t.phone}</strong> ${profile?.phone || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+              <strong style="color: #374151;">💰 ${t.ticketPrice}</strong> ${(booking?.total_amount || 0).toFixed(2)} JOD<br><br>
+              <div style="background: #ef4444; color: white; padding: 8px; border-radius: 6px; font-weight: bold;">
+                ${t.ticketUsedMessage.replace('{name}', ticket.activated_by || 'Unknown').replace('{date}', ticket.activated_at ? new Date(ticket.activated_at).toLocaleString('en-US', {
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  hour12: true
+                }) : 'Unknown')}
+              </div>
+            </div>
+          `;
+          
+          showResult(usedTicketDisplay, 'error');
+        } else {
           // Ticket is valid, show details
+          const ticketInfo = {
+            success: true,
+            ticket_number: ticket.ticket_number,
+            booking_number: booking?.booking_number,
+            activity_title: activity?.title,
+            activity_location: activity?.location,
+            customer_name: profile?.name,
+            customer_email: profile?.email,
+            customer_phone: profile?.phone,
+            ticket_type: ticket.ticket_type,
+            total_amount: booking?.total_amount,
+            payment_method: booking?.payment_method,
+            ticket_price: booking?.total_amount,
+            activity_image: activity?.image_url
+          };
+          
           setTicketDetails(ticketInfo);
           setShowTicketDetails(true);
           
-                     // Show beautiful individual ticket details with activity image
-           const ticketDisplay = `
-             <div style="text-align: center; margin-bottom: 20px;">
-               ${ticketInfo.activity_image ? 
-                 `<img src="${ticketInfo.activity_image}" alt="Activity" style="width: 120px; height: 80px; object-fit: cover; border-radius: 8px; margin-bottom: 10px;">` : 
-                 '<div style="width: 120px; height: 80px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px;"><span style="color: #6b7280;">No Image</span></div>'
-               }
-             </div>
-             <div style="background: #f8fafc; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-               <strong style="color: #1f2937;">🎫 ${t.ticketDetails}</strong><br><br>
-               <strong style="color: #374151;">🎫 ${t.ticketNumber}</strong> ${ticketInfo.ticket_number || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-               <strong style="color: #374151;">📋 ${t.bookingNumber}</strong> ${ticketInfo.booking_number || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-               <strong style="color: #374151;">${t.activity}</strong> ${ticketInfo.activity_title || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-               <strong style="color: #374151;">📍 ${t.location}</strong> ${ticketInfo.activity_location || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-               <strong style="color: #374151;">👤 ${t.customer}</strong> ${ticketInfo.customer_name || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-               <strong style="color: #374151;">📧 ${t.email}</strong> ${ticketInfo.customer_email || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-               <strong style="color: #374151;">📱 ${t.phone}</strong> ${ticketInfo.customer_phone || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-               <strong style="color: #374151;">🎭 ${t.ticketType}</strong> ${ticketInfo.ticket_type || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-                       <strong style="color: #374151;">💰 ${t.ticketPrice}</strong> ${(ticketInfo.total_amount || 0).toFixed(2)} JOD<br>
-        <strong style="color: #374151;">💳 ${t.paymentMethod}</strong> ${ticketInfo.payment_method === 'cash_on_arrival' ? t.cashOnArrival : t.alreadyPaid}<br><br>
-        <div style="background: #10b981; color: white; padding: 8px; border-radius: 6px; font-weight: bold;">
-          ${ticketInfo.payment_method === 'cash_on_arrival' ? t.requiresCashCollection : '✅ Ready to activate'}
-        </div>
-             </div>
-           `;
+          const ticketDisplay = `
+            <div style="text-align: center; margin-bottom: 20px;">
+              ${activity?.image_url ? 
+                `<img src="${activity.image_url}" alt="Activity" style="width: 120px; height: 80px; object-fit: cover; border-radius: 8px; margin-bottom: 10px;">` : 
+                '<div style="width: 120px; height: 80px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px;"><span style="color: #6b7280;">No Image</span></div>'
+              }
+            </div>
+            <div style="background: #f8fafc; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+              <strong style="color: #1f2937;">🎫 ${t.ticketDetails}</strong><br><br>
+              <strong style="color: #374151;">🎫 ${t.ticketNumber}</strong> ${ticket.ticket_number || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+              <strong style="color: #374151;">📋 ${t.bookingNumber}</strong> ${booking?.booking_number || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+              <strong style="color: #374151;">${t.activity}</strong> ${activity?.title || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+              <strong style="color: #374151;">📍 ${t.location}</strong> ${activity?.location || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+              <strong style="color: #374151;">👤 ${t.customer}</strong> ${profile?.name || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+              <strong style="color: #374151;">📧 ${t.email}</strong> ${profile?.email || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+              <strong style="color: #374151;">📱 ${t.phone}</strong> ${profile?.phone || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+              <strong style="color: #374151;">🎭 ${t.ticketType}</strong> ${ticket.ticket_type || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+              <strong style="color: #374151;">💰 ${t.ticketPrice}</strong> ${(booking?.total_amount || 0).toFixed(2)} JOD<br>
+              <strong style="color: #374151;">💳 ${t.paymentMethod}</strong> ${booking?.payment_method === 'cash_on_arrival' ? t.cashOnArrival : t.alreadyPaid}<br><br>
+              <div style="background: #10b981; color: white; padding: 8px; border-radius: 6px; font-weight: bold;">
+                ${booking?.payment_method === 'cash_on_arrival' ? t.requiresCashCollection : '✅ Ready to activate'}
+              </div>
+            </div>
+          `;
           
           showResult(ticketDisplay, 'info');
-        } else {
-          // Show ticket details even if there's an error (like requires cash collection)
-          if (ticketInfo.requires_cash_collection) {
-            setTicketDetails(ticketInfo);
-            setShowTicketDetails(true);
-            
-            const cashCollectionDisplay = `
-              <div style="text-align: center; margin-bottom: 20px;">
-                ${ticketInfo.activity_image ? 
-                  `<img src="${ticketInfo.activity_image}" alt="Activity" style="width: 120px; height: 80px; object-fit: cover; border-radius: 8px; margin-bottom: 10px;">` : 
-                  '<div style="width: 120px; height: 80px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px;"><span style="color: #6b7280;">No Image</span></div>'
-                }
-              </div>
-              <div style="background: #fffbeb; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #f59e0b;">
-                <strong style="color: #d97706;">⚠️ ${t.requiresCashCollection}</strong><br><br>
-                <strong style="color: #374151;">${t.activity}</strong> ${ticketInfo.activity_title || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-                <strong style="color: #374151;">📍 ${t.location}</strong> ${ticketInfo.activity_location || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-                <strong style="color: #374151;">👤 ${t.customer}</strong> ${ticketInfo.customer_name || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-                <strong style="color: #374151;">📧 ${t.email}</strong> ${ticketInfo.customer_email || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-                <strong style="color: #374151;">📱 ${t.phone}</strong> ${ticketInfo.customer_phone || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-                <strong style="color: #374151;">💰 ${t.ticketPrice}</strong> ${(ticketInfo.total_amount || 0).toFixed(2)} JOD<br><br>
-                <div style="background: #f59e0b; color: white; padding: 8px; border-radius: 6px; font-weight: bold;">
-                  Please enter the collected amount and your name to proceed.
-                </div>
-              </div>
-            `;
-            
-            showResult(cashCollectionDisplay, 'info');
-          } else if (ticketInfo.message === 'Ticket already used') {
-            // Show used ticket details
-            setTicketDetails(ticketInfo);
-            setShowTicketDetails(true);
-            
-            const usedTicketDisplay = `
-              <div style="text-align: center; margin-bottom: 20px;">
-                ${ticketInfo.activity_image ? 
-                  `<img src="${ticketInfo.activity_image}" alt="Activity" style="width: 120px; height: 80px; object-fit: cover; border-radius: 8px; margin-bottom: 10px;">` : 
-                  '<div style="width: 120px; height: 80px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px;"><span style="color: #6b7280;">No Image</span></div>'
-                }
-              </div>
-              <div style="background: #fef2f2; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #ef4444;">
-                <strong style="color: #dc2626;">❌ ${t.ticketUsed}</strong><br><br>
-                <strong style="color: #374151;">${t.activity}</strong> ${ticketInfo.activity_title || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-                <strong style="color: #374151;">📍 ${t.location}</strong> ${ticketInfo.activity_location || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-                <strong style="color: #374151;">👤 ${t.customer}</strong> ${ticketInfo.customer_name || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-                <strong style="color: #374151;">📧 ${t.email}</strong> ${ticketInfo.customer_email || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-                <strong style="color: #374151;">📱 ${t.phone}</strong> ${ticketInfo.customer_phone || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-                <strong style="color: #374151;">💰 ${t.ticketPrice}</strong> ${(ticketInfo.total_amount || 0).toFixed(2)} JOD<br><br>
-                <div style="background: #ef4444; color: white; padding: 8px; border-radius: 6px; font-weight: bold;">
-                  ${t.ticketUsedMessage.replace('{name}', ticketInfo.used_by || 'Unknown').replace('{date}', ticketInfo.used_at ? new Date(ticketInfo.used_at).toLocaleString('en-US', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: true
-                  }) : 'Unknown')}
-                </div>
-              </div>
-            `;
-            
-            showResult(usedTicketDisplay, 'error');
-          } else {
-            showResult(`❌ ${ticketInfo.message}`, 'error');
-          }
         }
       } else {
         showResult(`❌ ${t.errorActivation}`, 'error');
@@ -329,54 +371,50 @@ const PublicActivationPage = () => {
     try {
       console.log('Activating ticket with QR code:', qrCode.trim());
       
-             // Call Supabase RPC to activate individual ticket
-       const { data, error } = await supabase.rpc('activate_individual_ticket', {
-         qr_code_param: qrCode.trim(),
-         activated_by_param: activatorName.trim(),
-         device_info_param: {
-           platform: 'web',
-           userAgent: navigator.userAgent,
-           timestamp: new Date().toISOString(),
-           activator_name: activatorName.trim()
-         },
-         location_info_param: {
-           timestamp: new Date().toISOString(),
-           source: 'public_web'
-         },
-         collected_amount_param: ticketDetails?.payment_method === 'cash_on_arrival' ? parseFloat(collectedAmount) : null
-       });
+      // Update ticket status directly in the database
+      const { data: updateData, error: updateError } = await supabase
+        .from('tickets')
+        .update({
+          status: 'used',
+          activated_by: activatorName.trim(),
+          activated_at: new Date().toISOString(),
+          collected_amount: ticketDetails?.payment_method === 'cash_on_arrival' ? parseFloat(collectedAmount) : null
+        })
+        .eq('qr_code', qrCode.trim())
+        .eq('status', 'valid')
+        .select()
+        .single();
       
-      console.log('RPC Response:', { data, error });
+      console.log('Update Response:', { updateData, updateError });
 
-      if (error) {
-        console.error('Activation error:', error);
-        showResult(`❌ ${language === 'ar' ? 'خطأ:' : 'Error:'} ${error.message}`, 'error');
-      } else if (data) {
-        const activation = data;
-
-        if (activation.success) {
-          const successMessage = activation.payment_method === 'cash_on_arrival' 
-            ? t.cashCollectionMessage 
-            : t.successMessage;
-
-          showResult(`
-            <strong>${t.successTitle}</strong><br><br>
-            <strong>${t.customer}</strong> ${activation.customer_name || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-            <strong>${t.activity}</strong> ${activation.activity_title || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-            <strong>${t.time}</strong> ${new Date().toLocaleString()}<br>
-            ${activation.payment_method === 'cash_on_arrival' ? `<strong>${t.amount}</strong> ${activation.collected_amount} JOD<br>` : ''}
-            <br>${successMessage}
-          `, 'success');
-
-          // Clear form
-          setQrCode('');
-          setActivatorName('');
-          setCollectedAmount('');
-          setTicketDetails(null);
-          setShowTicketDetails(false);
+      if (updateError) {
+        console.error('Activation error:', updateError);
+        
+        if (updateError.code === 'PGRST116') {
+          showResult(`❌ ${t.ticketUsed}: This ticket has already been used or is invalid.`, 'error');
         } else {
-          showResult(`❌ ${t.errorActivation}: ${activation.message}`, 'error');
+          showResult(`❌ ${language === 'ar' ? 'خطأ:' : 'Error:'} ${updateError.message}`, 'error');
         }
+      } else if (updateData) {
+        const successMessage = ticketDetails?.payment_method === 'cash_on_arrival' 
+          ? t.cashCollectionMessage 
+          : t.successMessage;
+
+        showResult(`
+          <strong>${t.successTitle}</strong><br><br>
+          <strong>${t.customer}</strong> ${ticketDetails?.customer_name || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+          <strong>${t.activity}</strong> ${ticketDetails?.activity_title || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+          <strong>${t.time}</strong> ${new Date().toLocaleString()}<br>
+          ${ticketDetails?.payment_method === 'cash_on_arrival' ? `<strong>${t.amount}</strong> ${collectedAmount} JOD<br>` : ''}
+          <br>${successMessage}
+        `, 'success');
+
+        // Clear form
+        setQrCode('');
+        setActivatorName('');
+        setCollectedAmount('');
+        setTicketDetails(null);
+        setShowTicketDetails(false);
       } else {
         showResult(`❌ ${t.errorActivation}`, 'error');
       }
@@ -466,10 +504,10 @@ const PublicActivationPage = () => {
             <h3>{t.ticketDetails}</h3>
             
             {/* Activity Image */}
-            {ticketDetails.image_url && (
+            {ticketDetails.activity_image && (
               <div className="activity-image-container">
                 <img 
-                  src={ticketDetails.image_url.startsWith('http') ? ticketDetails.image_url : `https://rtjegrjmnuivkivdgwjk.supabase.co/storage/v1/object/public/activities/${ticketDetails.image_url}`} 
+                  src={ticketDetails.activity_image.startsWith('http') ? ticketDetails.activity_image : `https://rtjegrjmnuivkivdgwjk.supabase.co/storage/v1/object/public/activities/${ticketDetails.activity_image}`} 
                   alt="Activity" 
                   className="activity-image"
                   onError={(e) => {
@@ -578,4 +616,5 @@ const PublicActivationPage = () => {
     </div>
   );
 };
+
 export default PublicActivationPage;
