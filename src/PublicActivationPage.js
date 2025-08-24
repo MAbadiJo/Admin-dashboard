@@ -86,7 +86,9 @@ const PublicActivationPage = () => {
       ticketUsed: 'This ticket has already been used',
       ticketUsedMessage: 'This ticket was used by {name} on {date}',
       ticketNotFound: 'Ticket not found',
-      ticketNotFoundMessage: 'The QR code you scanned does not match any active ticket.'
+      ticketNotFoundMessage: 'The QR code you scanned does not match any active ticket.',
+      ticketNumber: 'Ticket Number',
+      bookingNumber: 'Booking Number'
     },
     ar: {
       title: 'بسمة جو',
@@ -138,7 +140,9 @@ const PublicActivationPage = () => {
       email: 'البريد الإلكتروني',
       phone: 'الهاتف',
       ticketType: 'نوع التذكرة',
-      quantity: 'الكمية'
+      quantity: 'الكمية',
+      ticketNumber: 'رقم التذكرة',
+      bookingNumber: 'رقم الحجز'
     }
   };
 
@@ -165,8 +169,8 @@ const PublicActivationPage = () => {
     try {
       console.log('Checking ticket with QR code:', qrCode.trim());
       
-             // Call Supabase RPC to get ticket details
-       const { data, error } = await supabase.rpc('activate_mobile_app_ticket', {
+             // Call Supabase RPC to get individual ticket details
+       const { data, error } = await supabase.rpc('activate_individual_ticket', {
          qr_code_param: qrCode.trim(),
          activated_by_param: null,
          device_info_param: {
@@ -194,30 +198,31 @@ const PublicActivationPage = () => {
           setTicketDetails(ticketInfo);
           setShowTicketDetails(true);
           
-          // Show beautiful ticket details with activity image
-          const ticketDisplay = `
-            <div style="text-align: center; margin-bottom: 20px;">
-              ${ticketInfo.activity_image ? 
-                `<img src="${ticketInfo.activity_image}" alt="Activity" style="width: 120px; height: 80px; object-fit: cover; border-radius: 8px; margin-bottom: 10px;">` : 
-                '<div style="width: 120px; height: 80px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px;"><span style="color: #6b7280;">No Image</span></div>'
-              }
-            </div>
-            <div style="background: #f8fafc; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-              <strong style="color: #1f2937;">🎫 ${t.ticketDetails}</strong><br><br>
-              <strong style="color: #374151;">${t.activity}</strong> ${ticketInfo.activity_title || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-              <strong style="color: #374151;">📍 ${t.location}</strong> ${ticketInfo.activity_location || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-              <strong style="color: #374151;">👤 ${t.customer}</strong> ${ticketInfo.customer_name || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-              <strong style="color: #374151;">📧 ${t.email}</strong> ${ticketInfo.customer_email || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-              <strong style="color: #374151;">📱 ${t.phone}</strong> ${ticketInfo.customer_phone || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-              <strong style="color: #374151;">🎭 ${t.ticketType}</strong> ${ticketInfo.ticket_type || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
-              <strong style="color: #374151;">🔢 ${t.quantity}</strong> ${ticketInfo.quantity || 1}<br>
-              <strong style="color: #374151;">💰 ${t.ticketPrice}</strong> ${ticketInfo.total_amount || 0} JOD<br>
-              <strong style="color: #374151;">💳 ${t.paymentMethod}</strong> ${ticketInfo.payment_method === 'cash_on_arrival' ? t.cashOnArrival : t.alreadyPaid}<br><br>
-              <div style="background: #10b981; color: white; padding: 8px; border-radius: 6px; font-weight: bold;">
-                ${ticketInfo.payment_method === 'cash_on_arrival' ? t.requiresCashCollection : '✅ Ready to activate'}
-              </div>
-            </div>
-          `;
+                     // Show beautiful individual ticket details with activity image
+           const ticketDisplay = `
+             <div style="text-align: center; margin-bottom: 20px;">
+               ${ticketInfo.activity_image ? 
+                 `<img src="${ticketInfo.activity_image}" alt="Activity" style="width: 120px; height: 80px; object-fit: cover; border-radius: 8px; margin-bottom: 10px;">` : 
+                 '<div style="width: 120px; height: 80px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px;"><span style="color: #6b7280;">No Image</span></div>'
+               }
+             </div>
+             <div style="background: #f8fafc; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+               <strong style="color: #1f2937;">🎫 ${t.ticketDetails}</strong><br><br>
+               <strong style="color: #374151;">🎫 ${t.ticketNumber}</strong> ${ticketInfo.ticket_number || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+               <strong style="color: #374151;">📋 ${t.bookingNumber}</strong> ${ticketInfo.booking_number || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+               <strong style="color: #374151;">${t.activity}</strong> ${ticketInfo.activity_title || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+               <strong style="color: #374151;">📍 ${t.location}</strong> ${ticketInfo.activity_location || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+               <strong style="color: #374151;">👤 ${t.customer}</strong> ${ticketInfo.customer_name || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+               <strong style="color: #374151;">📧 ${t.email}</strong> ${ticketInfo.customer_email || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+               <strong style="color: #374151;">📱 ${t.phone}</strong> ${ticketInfo.customer_phone || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+               <strong style="color: #374151;">🎭 ${t.ticketType}</strong> ${ticketInfo.ticket_type || (language === 'ar' ? 'غير محدد' : 'Not specified')}<br>
+               <strong style="color: #374151;">💰 ${t.ticketPrice}</strong> ${ticketInfo.unit_price || 0} JOD<br>
+               <strong style="color: #374151;">💳 ${t.paymentMethod}</strong> ${ticketInfo.payment_method === 'cash_on_arrival' ? t.cashOnArrival : t.alreadyPaid}<br><br>
+               <div style="background: #10b981; color: white; padding: 8px; border-radius: 6px; font-weight: bold;">
+                 ${ticketInfo.payment_method === 'cash_on_arrival' ? t.requiresCashCollection : '✅ Ready to activate'}
+               </div>
+             </div>
+           `;
           
           showResult(ticketDisplay, 'info');
         } else {
@@ -317,8 +322,8 @@ const PublicActivationPage = () => {
     try {
       console.log('Activating ticket with QR code:', qrCode.trim());
       
-             // Call Supabase RPC to activate ticket
-       const { data, error } = await supabase.rpc('activate_mobile_app_ticket', {
+             // Call Supabase RPC to activate individual ticket
+       const { data, error } = await supabase.rpc('activate_individual_ticket', {
          qr_code_param: qrCode.trim(),
          activated_by_param: activatorName.trim(),
          device_info_param: {
