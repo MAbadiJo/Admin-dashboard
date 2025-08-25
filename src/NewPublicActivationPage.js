@@ -18,15 +18,14 @@ const PublicActivationPage = () => {
   const [stream, setStream] = useState(null);
   const videoRef = useRef(null);
 
+  // Run once on mount
   useEffect(() => {
     console.log('PublicActivationPage: Component mounted');
     setPageLoaded(true);
-    
+
     // Auto-focus on QR code input
     const qrInput = document.getElementById('qrCode');
-    if (qrInput) {
-      qrInput.focus();
-    }
+    if (qrInput) qrInput.focus();
 
     // Handle URL parameters (for direct QR code activation)
     const urlParams = new URLSearchParams(window.location.search);
@@ -36,13 +35,59 @@ const PublicActivationPage = () => {
       showResult('QR code loaded from URL. Click "Check Ticket" to proceed.', 'info');
     }
 
-    // Cleanup function
+    // Cleanup on unmount: stop any active camera
     return () => {
       if (stream) {
-        stream.getTracks().forEach(track => track.stop());
+        try {
+          stream.getTracks().forEach((track) => track.stop());
+        } catch {}
+      }
+      if (videoRef.current) {
+        try {
+          videoRef.current.srcObject = null;
+        } catch {}
       }
     };
-  }, [stream]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // When the modal is shown *and* we have a stream, attach it to the video
+  useEffect(() => {
+    if (!showCamera || !stream || !videoRef.current) return;
+
+    const video = videoRef.current;
+    // iOS/Safari-friendly flags
+    video.setAttribute('playsinline', 'true');
+    video.playsInline = true;
+    video.muted = true;
+
+    try {
+      video.srcObject = stream;
+    } catch (err) {
+      // Older browsers fallback
+      // @ts-ignore
+      video.src = window.URL.createObjectURL(stream);
+    }
+
+    const onLoaded = async () => {
+      try {
+        const playPromise = video.play();
+        if (playPromise && typeof playPromise.then === 'function') {
+          await playPromise;
+        }
+      } catch (e) {
+        console.warn('Auto play failed, will retry on user gesture.', e);
+      }
+    };
+
+    video.addEventListener('loadedmetadata', onLoaded);
+    // In case loadedmetadata already fired
+    if (video.readyState >= 2) onLoaded();
+
+    return () => {
+      video.removeEventListener('loadedmetadata', onLoaded);
+    };
+  }, [showCamera, stream]);
 
   // Translations
   const translations = {
@@ -171,23 +216,42 @@ const PublicActivationPage = () => {
 
   const startCamera = async () => {
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' }
-      });
-      setStream(mediaStream);
-      setShowCamera(true);
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showResult(t.cameraError, 'error');
+        return;
       }
+
+      // Try to prefer the back camera but allow fallback
+      const constraints = {
+        audio: false,
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      };
+
+      // Show modal first so <video> exists, then attach stream via useEffect
+      setShowCamera(true);
+
+      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      setStream(mediaStream);
     } catch (error) {
       console.error('Error accessing camera:', error);
       showResult(t.cameraError, 'error');
+      setShowCamera(false);
     }
   };
 
   const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
+    try {
+      if (stream) stream.getTracks().forEach((track) => track.stop());
+    } catch {}
+    if (videoRef.current) {
+      try {
+        videoRef.current.pause();
+        videoRef.current.srcObject = null;
+      } catch {}
     }
     setStream(null);
     setShowCamera(false);
@@ -195,7 +259,7 @@ const PublicActivationPage = () => {
 
   const handleCheckTicket = async (e) => {
     e.preventDefault();
-    
+
     if (!qrCode.trim()) {
       showResult(t.errorQR, 'error');
       return;
@@ -208,19 +272,19 @@ const PublicActivationPage = () => {
 
     try {
       console.log('Checking ticket with QR code:', qrCode.trim());
-      
+
       // First get the ticket details
       const { data: ticketData, error: ticketError } = await supabase
         .from('tickets')
         .select('*')
         .eq('qr_code', qrCode.trim())
         .single();
-      
+
       console.log('Ticket Query Response:', { ticketData, ticketError });
 
       if (ticketError) {
         console.error('Ticket check error:', ticketError);
-        
+
         // If ticket not found, show error
         if (ticketError.code === 'PGRST116') {
           showResult(`❌ ${t.ticketNotFound}: ${t.ticketNotFoundMessage}`, 'error');
@@ -229,50 +293,50 @@ const PublicActivationPage = () => {
         }
       } else if (ticketData) {
         const ticket = ticketData;
-        
+
         // Get booking details
         const { data: bookingData, error: bookingError } = await supabase
           .from('bookings')
           .select('*')
           .eq('id', ticket.booking_id)
           .single();
-        
+
         if (bookingError) {
           console.error('Booking query error:', bookingError);
           showResult(`❌ ${language === 'ar' ? 'خطأ:' : 'Error:'} Could not load booking details`, 'error');
           return;
         }
-        
+
         const booking = bookingData;
-        
+
         // Get profile details
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
           .select('name, email, phone')
           .eq('id', booking.user_id)
           .single();
-        
+
         if (profileError) {
           console.error('Profile query error:', profileError);
           // Continue without profile data
         }
-        
+
         const profile = profileData;
-        
+
         // Get activity details
         const { data: activityData, error: activityError } = await supabase
           .from('activities')
           .select('title, title_ar, location, location_ar, image_url, price')
           .eq('id', booking.activity_id)
           .single();
-        
+
         if (activityError) {
           console.error('Activity query error:', activityError);
           // Continue without activity data
         }
-        
+
         const activity = activityData;
-        
+
         // Check if ticket is already used
         if (ticket.status === 'used') {
           const usedTicketInfo = {
@@ -292,7 +356,7 @@ const PublicActivationPage = () => {
             used_at: ticket.activated_at,
             activity_image: activity?.image_url
           };
-          
+
           setTicketDetails(usedTicketInfo);
           setShowTicketDetails(true);
           showResult(`❌ ${t.ticketUsed}`, 'error');
@@ -313,7 +377,7 @@ const PublicActivationPage = () => {
             ticket_price: activity?.price || 0, // Use activity price as ticket price
             activity_image: activity?.image_url
           };
-          
+
           setTicketDetails(ticketInfo);
           setShowTicketDetails(true);
           showResult('✅ Ticket verified successfully. Ready for activation.', 'success');
@@ -331,7 +395,7 @@ const PublicActivationPage = () => {
 
   const handleActivateTicket = async (e) => {
     e.preventDefault();
-    
+
     if (!qrCode.trim()) {
       showResult(t.errorQR, 'error');
       return;
@@ -355,7 +419,7 @@ const PublicActivationPage = () => {
 
     try {
       console.log('Activating ticket with QR code:', qrCode.trim());
-      
+
       // Update ticket status directly in the database
       const { data: updateData, error: updateError } = await supabase
         .from('tickets')
@@ -363,29 +427,42 @@ const PublicActivationPage = () => {
           status: 'used',
           activated_by: activatorName.trim(),
           activated_at: new Date().toISOString(),
-          collected_amount: ticketDetails?.payment_method === 'cash_on_arrival' ? parseFloat(collectedAmount) : null
+          collected_amount:
+            ticketDetails?.payment_method === 'cash_on_arrival'
+              ? parseFloat(collectedAmount)
+              : null
         })
         .eq('qr_code', qrCode.trim())
         .eq('status', 'valid')
         .select()
         .single();
-      
+
       console.log('Update Response:', { updateData, updateError });
 
       if (updateError) {
         console.error('Activation error:', updateError);
-        
+
         if (updateError.code === 'PGRST116') {
           showResult(`❌ ${t.ticketUsed}: This ticket has already been used or is invalid.`, 'error');
         } else {
           showResult(`❌ ${language === 'ar' ? 'خطأ:' : 'Error:'} ${updateError.message}`, 'error');
         }
       } else if (updateData) {
-        const successMessage = ticketDetails?.payment_method === 'cash_on_arrival' 
-          ? t.cashCollectionMessage 
-          : t.successMessage;
+        const successMessage =
+          ticketDetails?.payment_method === 'cash_on_arrival'
+            ? t.cashCollectionMessage
+            : t.successMessage;
 
-        showResult(`${t.successTitle}\n\n${t.customer}: ${ticketDetails?.customer_name || (language === 'ar' ? 'غير محدد' : 'Not specified')}\n${t.activity}: ${ticketDetails?.activity_title || (language === 'ar' ? 'غير محدد' : 'Not specified')}\n${t.time}: ${new Date().toLocaleString()}\n${ticketDetails?.payment_method === 'cash_on_arrival' ? `${t.amount}: ${collectedAmount} JOD\n` : ''}\n${successMessage}`, 'success');
+        showResult(
+          `${t.successTitle}\n\n${t.customer}: ${
+            ticketDetails?.customer_name || (language === 'ar' ? 'غير محدد' : 'Not specified')
+          }\n${t.activity}: ${ticketDetails?.activity_title || (language === 'ar' ? 'غير محدد' : 'Not specified')}\n${
+            t.time
+          }: ${new Date().toLocaleString()}\n${
+            ticketDetails?.payment_method === 'cash_on_arrival' ? `${t.amount}: ${collectedAmount} JOD\n` : ''
+          }\n${successMessage}`,
+          'success'
+        );
 
         // Clear form
         setQrCode('');
@@ -407,7 +484,7 @@ const PublicActivationPage = () => {
   const showResult = (message, type) => {
     setResult(message);
     setResultType(type);
-    
+
     // Auto-hide success messages after 5 seconds
     if (type === 'success') {
       setTimeout(() => {
@@ -667,7 +744,9 @@ const PublicActivationPage = () => {
         }
 
         @keyframes spin {
-          to { transform: rotate(360deg); }
+          to {
+            transform: rotate(360deg);
+          }
         }
 
         .modern-loading {
@@ -733,7 +812,7 @@ const PublicActivationPage = () => {
         .modern-ticket-image-overlay {
           position: absolute;
           inset: 0;
-          background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 50%);
+          background: linear-gradient(to top, rgba(0, 0, 0, 0.6) 0%, transparent 50%);
         }
 
         .modern-ticket-image-content {
@@ -1037,24 +1116,24 @@ const PublicActivationPage = () => {
           .modern-title {
             font-size: 2rem;
           }
-          
+
           .modern-header-content {
             flex-direction: column;
             text-align: center;
           }
-          
+
           .modern-container {
             padding: 20px 16px;
           }
-          
+
           .modern-card-content {
             padding: 20px;
           }
-          
+
           .modern-button-group {
             flex-direction: column;
           }
-          
+
           .modern-btn-secondary {
             order: -1;
           }
@@ -1079,16 +1158,16 @@ const PublicActivationPage = () => {
             <h1 className="modern-title">{t.title}</h1>
             <p className="modern-subtitle">{t.subtitle}</p>
           </div>
-          
+
           {/* Language Toggle */}
           <div className="modern-lang-toggle">
-            <button 
+            <button
               className={`modern-lang-btn ${language === 'en' ? 'active' : ''}`}
               onClick={() => handleLanguageChange('en')}
             >
               English
             </button>
-            <button 
+            <button
               className={`modern-lang-btn ${language === 'ar' ? 'active' : ''}`}
               onClick={() => handleLanguageChange('ar')}
             >
@@ -1109,8 +1188,8 @@ const PublicActivationPage = () => {
           <div className="modern-card-content">
             <form onSubmit={handleCheckTicket} className="modern-form">
               <div className="modern-input-group">
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   id="qrCode"
                   value={qrCode}
                   onChange={(e) => setQrCode(e.target.value)}
@@ -1122,26 +1201,20 @@ const PublicActivationPage = () => {
                 />
                 <span className="modern-input-icon">#</span>
               </div>
-              
+
               <div className="modern-button-group">
-                <button 
-                  type="submit" 
-                  className="modern-btn modern-btn-primary"
-                  disabled={loading}
-                >
+                <button type="submit" className="modern-btn modern-btn-primary" disabled={loading}>
                   {loading ? (
                     <>
                       <div className="modern-spinner"></div>
                       {t.activatingButton}
                     </>
                   ) : (
-                    <>
-                      ✓ {t.checkButton}
-                    </>
+                    <>✓ {t.checkButton}</>
                   )}
                 </button>
-                
-                <button 
+
+                <button
                   type="button"
                   onClick={startCamera}
                   className="modern-btn modern-btn-secondary"
@@ -1160,24 +1233,19 @@ const PublicActivationPage = () => {
             <div className="modern-camera-content">
               <div className="modern-camera-header">
                 <h3 className="modern-camera-title">Scan QR Code</h3>
-                <button 
-                  onClick={stopCamera}
-                  className="modern-camera-close"
-                >
+                <button onClick={stopCamera} className="modern-camera-close">
                   ✕
                 </button>
               </div>
-              <video 
+              <video
                 ref={videoRef}
                 autoPlay
+                playsInline
+                muted
                 className="modern-camera-video"
               />
               <p className="modern-camera-hint">Position the QR code within the camera view</p>
-              <button 
-                onClick={stopCamera}
-                className="modern-btn modern-btn-secondary"
-                style={{width: '100%'}}
-              >
+              <button onClick={stopCamera} className="modern-btn modern-btn-secondary" style={{ width: '100%' }}>
                 {t.closeCamera}
               </button>
             </div>
@@ -1196,16 +1264,19 @@ const PublicActivationPage = () => {
 
         {/* Result Message */}
         {result && (
-          <div className={`modern-alert ${
-            resultType === 'success' ? 'modern-alert-success' :
-            resultType === 'error' ? 'modern-alert-error' :
-            'modern-alert-info'
-          }`}>
+          <div
+            className={`modern-alert ${
+              resultType === 'success'
+                ? 'modern-alert-success'
+                : resultType === 'error'
+                ? 'modern-alert-error'
+                : 'modern-alert-info'
+            }`}
+          >
             <span className="modern-alert-icon">
-              {resultType === 'success' ? '✅' :
-               resultType === 'error' ? '❌' : 'ℹ️'}
+              {resultType === 'success' ? '✅' : resultType === 'error' ? '❌' : 'ℹ️'}
             </span>
-            <div style={{whiteSpace: 'pre-line'}}>{result}</div>
+            <div style={{ whiteSpace: 'pre-line' }}>{result}</div>
           </div>
         )}
 
@@ -1214,9 +1285,13 @@ const PublicActivationPage = () => {
           <div className="modern-card">
             {ticketDetails.activity_image && (
               <div className="modern-ticket-image">
-                <img 
-                  src={ticketDetails.activity_image.startsWith('http') ? ticketDetails.activity_image : `https://rtjegrjmnuivkivdgwjk.supabase.co/storage/v1/object/public/activities/${ticketDetails.activity_image}`} 
-                  alt="Activity" 
+                <img
+                  src={
+                    ticketDetails.activity_image.startsWith('http')
+                      ? ticketDetails.activity_image
+                      : `https://rtjegrjmnuivkivdgwjk.supabase.co/storage/v1/object/public/activities/${ticketDetails.activity_image}`
+                  }
+                  alt="Activity"
                   onError={(e) => {
                     e.target.style.display = 'none';
                   }}
@@ -1224,20 +1299,29 @@ const PublicActivationPage = () => {
                 <div className="modern-ticket-image-overlay"></div>
                 <div className="modern-ticket-image-content">
                   <h3 className="modern-ticket-image-title">{ticketDetails.activity_title}</h3>
-                  <p className="modern-ticket-image-location">
-                    📍 {ticketDetails.activity_location}
-                  </p>
+                  <p className="modern-ticket-image-location">📍 {ticketDetails.activity_location}</p>
                 </div>
               </div>
             )}
-            
+
             <div className="modern-card-content">
-              <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px'}}>
-                <h3 style={{display: 'flex', alignItems: 'center', gap: '8px', margin: 0}}>
-                  <span style={{fontSize: '24px'}}>🎫</span>
-                  <span style={{fontSize: '1.5rem', fontWeight: '700'}}>{t.ticketDetails}</span>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '24px'
+                }}
+              >
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                  <span style={{ fontSize: '24px' }}>🎫</span>
+                  <span style={{ fontSize: '1.5rem', fontWeight: '700' }}>{t.ticketDetails}</span>
                 </h3>
-                <div className={`modern-status-badge ${ticketDetails.success === false ? 'modern-status-used' : 'modern-status-valid'}`}>
+                <div
+                  className={`modern-status-badge ${
+                    ticketDetails.success === false ? 'modern-status-used' : 'modern-status-valid'
+                  }`}
+                >
                   {ticketDetails.success === false ? 'Used Ticket' : 'Valid Ticket'}
                 </div>
               </div>
@@ -1250,7 +1334,7 @@ const PublicActivationPage = () => {
                     <div className="modern-info-value">{ticketDetails.ticket_number}</div>
                   </div>
                 </div>
-                
+
                 <div className="modern-info-item">
                   <span className="modern-info-icon">👤</span>
                   <div className="modern-info-content">
@@ -1258,7 +1342,7 @@ const PublicActivationPage = () => {
                     <div className="modern-info-value">{ticketDetails.customer_name}</div>
                   </div>
                 </div>
-                
+
                 <div className="modern-info-item">
                   <span className="modern-info-icon">📧</span>
                   <div className="modern-info-content">
@@ -1274,7 +1358,7 @@ const PublicActivationPage = () => {
                     <div className="modern-info-value">{ticketDetails.customer_phone}</div>
                   </div>
                 </div>
-                
+
                 <div className="modern-info-item">
                   <span className="modern-info-icon">💳</span>
                   <div className="modern-info-content">
@@ -1284,7 +1368,7 @@ const PublicActivationPage = () => {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="modern-info-item">
                   <span className="modern-info-icon">💰</span>
                   <div className="modern-info-content">
@@ -1296,15 +1380,24 @@ const PublicActivationPage = () => {
 
               {/* Activation Form - Only show if ticket is not already used */}
               {ticketDetails.message !== 'Ticket already used' && (
-                <div style={{borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '32px', marginTop: '32px'}}>
-                  <h4 style={{display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', fontSize: '1.25rem', fontWeight: '600'}}>
+                <div style={{ borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '32px', marginTop: '32px' }}>
+                  <h4
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      marginBottom: '24px',
+                      fontSize: '1.25rem',
+                      fontWeight: '600'
+                    }}
+                  >
                     <span>👨‍💼</span> Activation Details
                   </h4>
-                  
+
                   <form onSubmit={handleActivateTicket} className="modern-form">
                     <div className="modern-input-group">
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         id="activatorName"
                         value={activatorName}
                         onChange={(e) => setActivatorName(e.target.value)}
@@ -1316,16 +1409,14 @@ const PublicActivationPage = () => {
                       />
                       <span className="modern-input-icon">👤</span>
                     </div>
-                    
+
                     {/* Cash Collection Field - Only show for cash on arrival */}
                     {ticketDetails.payment_method === 'cash_on_arrival' && (
                       <div className="modern-cash-collection">
-                        <div className="modern-cash-collection-header">
-                          ⚠️ {t.requiresCashCollection}
-                        </div>
+                        <div className="modern-cash-collection-header">⚠️ {t.requiresCashCollection}</div>
                         <div className="modern-input-group">
-                          <input 
-                            type="number" 
+                          <input
+                            type="number"
                             id="collectedAmount"
                             value={collectedAmount}
                             onChange={(e) => setCollectedAmount(e.target.value)}
@@ -1341,11 +1432,11 @@ const PublicActivationPage = () => {
                         </div>
                       </div>
                     )}
-                    
-                    <button 
-                      type="submit" 
+
+                    <button
+                      type="submit"
                       className="modern-btn modern-btn-success"
-                      style={{width: '100%'}}
+                      style={{ width: '100%' }}
                       disabled={loading}
                     >
                       {loading ? (
@@ -1355,7 +1446,10 @@ const PublicActivationPage = () => {
                         </>
                       ) : (
                         <>
-                          ✅ {ticketDetails.payment_method === 'cash_on_arrival' ? t.confirmCollectionButton : t.activateButton}
+                          ✅{' '}
+                          {ticketDetails.payment_method === 'cash_on_arrival'
+                            ? t.confirmCollectionButton
+                            : t.activateButton}
                         </>
                       )}
                     </button>
@@ -1366,22 +1460,23 @@ const PublicActivationPage = () => {
               {/* Used Ticket Information */}
               {ticketDetails.message === 'Ticket already used' && (
                 <div className="modern-used-ticket-info">
-                  <div className="modern-used-ticket-header">
-                    ❌ {t.ticketUsed}
-                  </div>
+                  <div className="modern-used-ticket-header">❌ {t.ticketUsed}</div>
                   <div className="modern-used-ticket-details">
                     <div className="modern-used-ticket-detail">
                       <strong>Used By:</strong> {ticketDetails.used_by || 'Unknown'}
                     </div>
                     <div className="modern-used-ticket-detail">
-                      <strong>Used At:</strong> {ticketDetails.used_at ? new Date(ticketDetails.used_at).toLocaleString('en-US', {
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: true
-                      }) : 'Unknown'}
+                      <strong>Used At:</strong>{' '}
+                      {ticketDetails.used_at
+                        ? new Date(ticketDetails.used_at).toLocaleString('en-US', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: true
+                          })
+                        : 'Unknown'}
                     </div>
                   </div>
                 </div>
@@ -1396,7 +1491,7 @@ const PublicActivationPage = () => {
             <div className="modern-icon">📋</div>
             <h3 className="modern-card-title">{t.instructionsTitle}</h3>
           </div>
-          
+
           <div className="modern-instructions-grid">
             <div>
               {t.instructions.slice(0, Math.ceil(t.instructions.length / 2)).map((instruction, index) => (
@@ -1406,11 +1501,13 @@ const PublicActivationPage = () => {
                 </div>
               ))}
             </div>
-            
+
             <div>
               {t.instructions.slice(Math.ceil(t.instructions.length / 2)).map((instruction, index) => (
                 <div key={index} className="modern-instruction-item">
-                  <div className="modern-instruction-number">{Math.ceil(t.instructions.length / 2) + index + 1}</div>
+                  <div className="modern-instruction-number">
+                    {Math.ceil(t.instructions.length / 2) + index + 1}
+                  </div>
                   <div className="modern-instruction-text">{instruction}</div>
                 </div>
               ))}
@@ -1422,9 +1519,7 @@ const PublicActivationPage = () => {
         <div className="modern-footer">
           <div className="modern-footer-title">{t.title}</div>
           <div className="modern-footer-text">{t.footer}</div>
-          <div className="modern-footer-support">
-            📧 {t.support}
-          </div>
+          <div className="modern-footer-support">📧 {t.support}</div>
         </div>
       </div>
     </div>
