@@ -16,7 +16,15 @@ const PublicActivationPage = () => {
   const [pageLoaded, setPageLoaded] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [stream, setStream] = useState(null);
+  const [scannerSupported, setScannerSupported] = useState(
+    typeof window !== 'undefined' && 'BarcodeDetector' in window
+  );
+  const [scanning, setScanning] = useState(false);
+  const [scanHint, setScanHint] = useState('Position the QR code within the camera view');
   const videoRef = useRef(null);
+  const rafRef = useRef(null);
+  const detectorRef = useRef(null);
+  const streamRef = useRef(null);
 
   // Run once on mount
   useEffect(() => {
@@ -37,11 +45,8 @@ const PublicActivationPage = () => {
 
     // Cleanup on unmount: stop any active camera
     return () => {
-      if (stream) {
-        try {
-          stream.getTracks().forEach((track) => track.stop());
-        } catch {}
-      }
+      cancelScanLoop();
+      stopStreamTracks(streamRef.current);
       if (videoRef.current) {
         try {
           videoRef.current.srcObject = null;
@@ -64,7 +69,7 @@ const PublicActivationPage = () => {
     try {
       video.srcObject = stream;
     } catch (err) {
-      // Older browsers fallback
+      // Older fallback
       // @ts-ignore
       video.src = window.URL.createObjectURL(stream);
     }
@@ -75,13 +80,15 @@ const PublicActivationPage = () => {
         if (playPromise && typeof playPromise.then === 'function') {
           await playPromise;
         }
+        // Start scanning after video is playing
+        beginScanLoop();
       } catch (e) {
         console.warn('Auto play failed, will retry on user gesture.', e);
+        setScanHint('Tap the video to start, then point at the QR');
       }
     };
 
     video.addEventListener('loadedmetadata', onLoaded);
-    // In case loadedmetadata already fired
     if (video.readyState >= 2) onLoaded();
 
     return () => {
@@ -148,7 +155,8 @@ const PublicActivationPage = () => {
       ticketNotFoundMessage: 'The QR code you scanned does not match any active ticket.',
       ticketNumber: 'Ticket Number',
       bookingNumber: 'Booking Number',
-      cameraError: 'Camera access denied or not available'
+      cameraError: 'Camera access denied or not available',
+      scannerUnsupported: 'QR scanning is not supported on this browser. Please type the code manually.'
     },
     ar: {
       title: 'بسمة جو',
@@ -207,7 +215,8 @@ const PublicActivationPage = () => {
       quantity: 'الكمية',
       ticketNumber: 'رقم التذكرة',
       bookingNumber: 'رقم الحجز',
-      cameraError: 'تم رفض الوصول للكاميرا أو غير متاحة'
+      cameraError: 'تم رفض الوصول للكاميرا أو غير متاحة',
+      scannerUnsupported: 'متصفحك لا يدعم قراءة QR داخل الصفحة. الرجاء إدخال الرمز يدوياً.'
     }
   };
 
@@ -218,6 +227,82 @@ const PublicActivationPage = () => {
     setLanguage(newLanguage);
   };
 
+  // ---------- Scanner helpers ----------
+  const stopStreamTracks = (mediaStream) => {
+    try {
+      if (mediaStream) mediaStream.getTracks().forEach((tr) => tr.stop());
+    } catch {}
+  };
+
+  const cancelScanLoop = () => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    detectorRef.current = null;
+    setScanning(false);
+  };
+
+  const parsePossibleUrlQR = (val) => {
+    // If the QR is a URL that includes ?qr=XYZ, extract XYZ
+    try {
+      const u = new URL(val);
+      const qp = new URLSearchParams(u.search).get('qr');
+      return qp || val;
+    } catch {
+      return val;
+    }
+  };
+
+  const beginScanLoop = () => {
+    if (!scannerSupported) {
+      setScanHint(t.scannerUnsupported);
+      return;
+    }
+    try {
+      detectorRef.current = new window.BarcodeDetector({ formats: ['qr_code'] });
+      setScanning(true);
+      setScanHint('Align the QR code inside the frame');
+
+      const scan = async () => {
+        try {
+          const video = videoRef.current;
+          if (!video || video.readyState < 2) {
+            rafRef.current = requestAnimationFrame(scan);
+            return;
+          }
+
+          const barcodes = await detectorRef.current.detect(video);
+          if (barcodes && barcodes.length) {
+            const raw = barcodes[0].rawValue || '';
+            const extracted = parsePossibleUrlQR(raw);
+
+            // Fill the input, stop camera, show message
+            setQrCode(extracted);
+            showResult('QR detected. Click "Check Ticket" to proceed.', 'info');
+
+            stopCamera(); // closes modal + stops stream + cancels RAF
+            // Optionally auto-click "Check Ticket": uncomment next lines if desired
+            // setTimeout(() => {
+            //   document.getElementById('checkTicketBtn')?.click();
+            // }, 50);
+            return;
+          }
+        } catch (err) {
+          console.warn('Detection error:', err);
+          // keep trying
+        }
+        rafRef.current = requestAnimationFrame(scan);
+      };
+
+      rafRef.current = requestAnimationFrame(scan);
+    } catch (e) {
+      console.error('BarcodeDetector init failed:', e);
+      setScannerSupported(false);
+      setScanHint(t.scannerUnsupported);
+    }
+  };
+
   const startCamera = async () => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -225,7 +310,7 @@ const PublicActivationPage = () => {
         return;
       }
 
-      // Try to prefer the back camera but allow fallback
+      // Prefer the back camera, with reasonable resolution
       const constraints = {
         audio: false,
         video: {
@@ -235,11 +320,11 @@ const PublicActivationPage = () => {
         }
       };
 
-      // Show modal first so <video> exists, then attach stream via useEffect
-      setShowCamera(true);
+      setShowCamera(true); // Show modal first so <video> exists
 
       const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
       setStream(mediaStream);
+      streamRef.current = mediaStream;
     } catch (error) {
       console.error('Error accessing camera:', error);
       showResult(t.cameraError, 'error');
@@ -248,9 +333,10 @@ const PublicActivationPage = () => {
   };
 
   const stopCamera = () => {
-    try {
-      if (stream) stream.getTracks().forEach((track) => track.stop());
-    } catch {}
+    cancelScanLoop();
+    stopStreamTracks(streamRef.current);
+    streamRef.current = null;
+
     if (videoRef.current) {
       try {
         videoRef.current.pause();
@@ -1035,6 +1121,13 @@ const PublicActivationPage = () => {
           line-height: 1.5;
         }
 
+        .modern-scan-status {
+          text-align: center;
+          font-size: 0.9rem;
+          color: #1e40af;
+          margin-bottom: 16px;
+        }
+
         .modern-used-ticket-info {
           background: #fef2f2;
           border: 2px solid #fecaca;
@@ -1205,7 +1298,16 @@ const PublicActivationPage = () => {
                 muted
                 className="modern-camera-video"
               />
-              <p className="modern-camera-hint">Position the QR code within the camera view</p>
+              <p className="modern-camera-hint">{
+                scannerSupported
+                  ? 'Position the QR code within the camera view'
+                  : t.scannerUnsupported
+              }</p>
+              {scannerSupported && (
+                <div className="modern-scan-status">
+                  {scanning ? 'Scanning…' : 'Initializing camera…'}
+                </div>
+              )}
               <button onClick={stopCamera} className="modern-btn modern-btn-secondary" style={{ width: '100%' }}>
                 {t.closeCamera}
               </button>
