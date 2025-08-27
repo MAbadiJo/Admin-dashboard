@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import './WebActivationPage.css'; // Keep using your existing CSS
 import { supabase } from './supabaseClient';
 
-// Enhanced Public Activation Page with native QR Scanner (no external libs)
+// Enhanced Public Activation Page with Camera QR Scanner (No external dependencies)
 const PublicActivationPage = () => {
   const [qrCode, setQrCode] = useState('');
   const [activatorName, setActivatorName] = useState('');
@@ -14,24 +14,13 @@ const PublicActivationPage = () => {
   const [ticketDetails, setTicketDetails] = useState(null);
   const [showTicketDetails, setShowTicketDetails] = useState(false);
   const [pageLoaded, setPageLoaded] = useState(false);
-
-  // Camera/scan state
   const [showCamera, setShowCamera] = useState(false);
   const [stream, setStream] = useState(null);
-  const [scannerSupported, setScannerSupported] = useState(
-    typeof window !== 'undefined' && 'BarcodeDetector' in window
-  );
-  const [scanning, setScanning] = useState(false);
-  const [scanHint, setScanHint] = useState('Position the QR code within the camera view');
-
-  // Refs
   const videoRef = useRef(null);
-  const rafRef = useRef(null);
-  const detectorRef = useRef(null);
-  const streamRef = useRef(null);
 
   // Run once on mount
   useEffect(() => {
+    console.log('PublicActivationPage: Component mounted');
     setPageLoaded(true);
 
     // Auto-focus on QR code input
@@ -46,20 +35,23 @@ const PublicActivationPage = () => {
       showResult('QR code loaded from URL. Click "Check Ticket" to proceed.', 'info');
     }
 
-    // Cleanup on unmount: stop any active camera and cancel RAF
+    // Cleanup on unmount: stop any active camera
     return () => {
-      cancelScanLoop();
-      stopStreamTracks(streamRef.current);
+      if (stream) {
+        try {
+          stream.getTracks().forEach((track) => track.stop());
+        } catch {}
+      }
       if (videoRef.current) {
         try {
-          videoRef.current.pause();
           videoRef.current.srcObject = null;
         } catch {}
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Attach stream to <video> when camera modal shows and stream is ready
+  // When the modal is shown *and* we have a stream, attach it to the video
   useEffect(() => {
     if (!showCamera || !stream || !videoRef.current) return;
 
@@ -72,7 +64,7 @@ const PublicActivationPage = () => {
     try {
       video.srcObject = stream;
     } catch (err) {
-      // Older fallback
+      // Older browsers fallback
       // @ts-ignore
       video.src = window.URL.createObjectURL(stream);
     }
@@ -83,15 +75,13 @@ const PublicActivationPage = () => {
         if (playPromise && typeof playPromise.then === 'function') {
           await playPromise;
         }
-        // Start scanning after video is playing
-        beginScanLoop();
       } catch (e) {
         console.warn('Auto play failed, will retry on user gesture.', e);
-        setScanHint('Tap the video to start, then point at the QR');
       }
     };
 
     video.addEventListener('loadedmetadata', onLoaded);
+    // In case loadedmetadata already fired
     if (video.readyState >= 2) onLoaded();
 
     return () => {
@@ -147,6 +137,8 @@ const PublicActivationPage = () => {
       ticketDetails: 'Ticket Details',
       paymentMethod: 'Payment Method',
       ticketPrice: 'Ticket Price',
+      serviceFee: 'Service Fee',
+      totalPrice: 'Total Price',
       requiresCashCollection: 'This ticket requires cash collection',
       cashOnArrival: 'Cash on Arrival',
       alreadyPaid: 'Already Paid',
@@ -156,8 +148,7 @@ const PublicActivationPage = () => {
       ticketNotFoundMessage: 'The QR code you scanned does not match any active ticket.',
       ticketNumber: 'Ticket Number',
       bookingNumber: 'Booking Number',
-      cameraError: 'Camera access denied or not available',
-      scannerUnsupported: 'QR scanning is not supported on this browser. Please type the code manually.'
+      cameraError: 'Camera access denied or not available'
     },
     ar: {
       title: 'بسمة جو',
@@ -200,6 +191,8 @@ const PublicActivationPage = () => {
       ticketDetails: 'تفاصيل التذكرة',
       paymentMethod: 'طريقة الدفع',
       ticketPrice: 'سعر التذكرة',
+      serviceFee: 'رسوم الخدمة',
+      totalPrice: 'السعر الإجمالي',
       requiresCashCollection: 'هذه التذكرة تتطلب تحصيل نقدي',
       cashOnArrival: 'الدفع عند الوصول',
       alreadyPaid: 'مدفوع مسبقاً',
@@ -214,91 +207,15 @@ const PublicActivationPage = () => {
       quantity: 'الكمية',
       ticketNumber: 'رقم التذكرة',
       bookingNumber: 'رقم الحجز',
-      cameraError: 'تم رفض الوصول للكاميرا أو غير متاحة',
-      scannerUnsupported: 'متصفحك لا يدعم قراءة QR داخل الصفحة. الرجاء إدخال الرمز يدوياً.'
+      cameraError: 'تم رفض الوصول للكاميرا أو غير متاحة'
     }
   };
 
   const t = translations[language];
 
   const handleLanguageChange = (newLanguage) => {
+    console.log('Changing language from', language, 'to', newLanguage);
     setLanguage(newLanguage);
-  };
-
-  // ---------- Scanner helpers ----------
-  const stopStreamTracks = (mediaStream) => {
-    try {
-      if (mediaStream) mediaStream.getTracks().forEach((tr) => tr.stop());
-    } catch {}
-  };
-
-  const cancelScanLoop = () => {
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
-    detectorRef.current = null;
-    setScanning(false);
-  };
-
-  const parsePossibleUrlQR = (val) => {
-    // If the QR is a URL that includes ?qr=XYZ, extract XYZ
-    try {
-      const u = new URL(val);
-      const qp = new URLSearchParams(u.search).get('qr');
-      return qp || val;
-    } catch {
-      return val;
-    }
-  };
-
-  const beginScanLoop = () => {
-    if (!scannerSupported) {
-      setScanHint(t.scannerUnsupported);
-      return;
-    }
-    try {
-      detectorRef.current = new window.BarcodeDetector({ formats: ['qr_code'] });
-      setScanning(true);
-      setScanHint('Align the QR code inside the frame');
-
-      const scan = async () => {
-        try {
-          const video = videoRef.current;
-          if (!video || video.readyState < 2) {
-            rafRef.current = requestAnimationFrame(scan);
-            return;
-          }
-
-          const barcodes = await detectorRef.current.detect(video);
-          if (barcodes && barcodes.length) {
-            const raw = barcodes[0].rawValue || '';
-            const extracted = parsePossibleUrlQR(raw);
-
-            // Fill the input, stop camera, show message
-            setQrCode(extracted);
-            showResult('QR detected. Click "Check Ticket" to proceed.', 'info');
-
-            stopCamera(); // closes modal + stops stream + cancels RAF
-            // Optionally auto-click "Check Ticket": uncomment next lines if desired
-            // setTimeout(() => {
-            //   document.getElementById('checkTicketBtn')?.click();
-            // }, 50);
-            return;
-          }
-        } catch (err) {
-          console.warn('Detection error:', err);
-          // keep trying
-        }
-        rafRef.current = requestAnimationFrame(scan);
-      };
-
-      rafRef.current = requestAnimationFrame(scan);
-    } catch (e) {
-      console.error('BarcodeDetector init failed:', e);
-      setScannerSupported(false);
-      setScanHint(t.scannerUnsupported);
-    }
   };
 
   const startCamera = async () => {
@@ -308,7 +225,7 @@ const PublicActivationPage = () => {
         return;
       }
 
-      // Prefer the back camera, with reasonable resolution
+      // Try to prefer the back camera but allow fallback
       const constraints = {
         audio: false,
         video: {
@@ -318,11 +235,11 @@ const PublicActivationPage = () => {
         }
       };
 
-      setShowCamera(true); // Show modal first so <video> exists
+      // Show modal first so <video> exists, then attach stream via useEffect
+      setShowCamera(true);
 
       const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
       setStream(mediaStream);
-      streamRef.current = mediaStream;
     } catch (error) {
       console.error('Error accessing camera:', error);
       showResult(t.cameraError, 'error');
@@ -331,10 +248,9 @@ const PublicActivationPage = () => {
   };
 
   const stopCamera = () => {
-    cancelScanLoop();
-    stopStreamTracks(streamRef.current);
-    streamRef.current = null;
-
+    try {
+      if (stream) stream.getTracks().forEach((track) => track.stop());
+    } catch {}
     if (videoRef.current) {
       try {
         videoRef.current.pause();
@@ -345,7 +261,6 @@ const PublicActivationPage = () => {
     setShowCamera(false);
   };
 
-  // ---------- Supabase flows ----------
   const handleCheckTicket = async (e) => {
     e.preventDefault();
 
@@ -360,103 +275,82 @@ const PublicActivationPage = () => {
     setShowTicketDetails(false);
 
     try {
-      // First get the ticket details
-      const { data: ticketData, error: ticketError } = await supabase
-        .from('tickets')
-        .select('*')
-        .eq('qr_code', qrCode.trim())
-        .single();
+      console.log('Checking ticket with QR code:', qrCode.trim());
+
+      // Use the new RPC function for public access
+      const { data: ticketData, error: ticketError } = await supabase.rpc(
+        'get_public_ticket_details',
+        { p_qr_code: qrCode.trim() }
+      );
+
+      console.log('RPC Response:', { ticketData, ticketError });
 
       if (ticketError) {
-        // If ticket not found, show error
-        if (ticketError.code === 'PGRST116') {
-          showResult(`❌ ${t.ticketNotFound}: ${t.ticketNotFoundMessage}`, 'error');
-        } else {
-          showResult(`❌ ${language === 'ar' ? 'خطأ:' : 'Error:'} ${ticketError.message}`, 'error');
-        }
-      } else if (ticketData) {
-        const ticket = ticketData;
+        console.error('RPC Error:', ticketError);
+        showResult(`❌ ${t.errorActivation}: ${ticketError.message}`, 'error');
+        setLoading(false);
+        return;
+      }
 
-        // Get booking details
-        const { data: bookingData, error: bookingError } = await supabase
-          .from('bookings')
-          .select('*')
-          .eq('id', ticket.booking_id)
-          .single();
+      if (!ticketData) {
+        showResult(`❌ ${t.ticketNotFound}: ${t.ticketNotFoundMessage}`, 'error');
+        setLoading(false);
+        return;
+      }
 
-        if (bookingError) {
-          showResult(`❌ ${language === 'ar' ? 'خطأ:' : 'Error:'} Could not load booking details`, 'error');
-          setLoading(false);
-          return;
-        }
+      const ticket = ticketData;
 
-        const booking = bookingData;
+      // Check if ticket is already used
+      if (ticket.status === 'used') {
+        const usedTicketInfo = {
+          success: false,
+          message: 'Ticket already used',
+          ticket_number: ticket.full_ticket_id,
+          booking_number: ticket.short_booking_id,
+          activity_title: ticket.activity_title,
+          activity_location: ticket.activity_location,
+          customer_name: ticket.customer_name,
+          customer_email: ticket.customer_email,
+          customer_phone: ticket.customer_phone,
+          ticket_type: ticket.ticket_type,
+          total_amount: ticket.total_price,
+          payment_method: ticket.payment_method,
+          used_by: ticket.activated_by,
+          used_at: ticket.activated_at,
+          activity_image: ticket.activity_image_url,
+          // Individual pricing from the ticket
+          unit_price: ticket.unit_price,
+          service_fee: ticket.service_fee,
+          total_price: ticket.total_price
+        };
 
-        // Get profile details
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('name, email, phone')
-          .eq('id', booking.user_id)
-          .single();
-
-        const profile = profileData || {};
-
-        // Get activity details
-        const { data: activityData } = await supabase
-          .from('activities')
-          .select('title, title_ar, location, location_ar, image_url, price')
-          .eq('id', booking.activity_id)
-          .single();
-
-        const activity = activityData || {};
-
-        // Check if ticket is already used
-        if (ticket.status === 'used') {
-          const usedTicketInfo = {
-            success: false,
-            message: 'Ticket already used',
-            ticket_number: ticket.full_ticket_id || ticket.ticket_number,
-            booking_number: booking?.booking_number,
-            activity_title: activity?.title,
-            activity_location: activity?.location,
-            customer_name: profile?.name,
-            customer_email: profile?.email,
-            customer_phone: profile?.phone,
-            ticket_type: ticket.ticket_type,
-            total_amount: activity?.price || 0,
-            payment_method: booking?.payment_method,
-            used_by: ticket.activated_by,
-            used_at: ticket.activated_at,
-            activity_image: activity?.image_url
-          };
-
-          setTicketDetails(usedTicketInfo);
-          setShowTicketDetails(true);
-          showResult(`❌ ${t.ticketUsed}`, 'error');
-        } else {
-          // Ticket is valid, show details
-          const ticketInfo = {
-            success: true,
-            ticket_number: ticket.full_ticket_id || ticket.ticket_number,
-            booking_number: booking?.booking_number,
-            activity_title: activity?.title,
-            activity_location: activity?.location,
-            customer_name: profile?.name,
-            customer_email: profile?.email,
-            customer_phone: profile?.phone,
-            ticket_type: ticket.ticket_type,
-            total_amount: activity?.price || 0,
-            payment_method: booking?.payment_method,
-            ticket_price: activity?.price || 0,
-            activity_image: activity?.image_url
-          };
-
-          setTicketDetails(ticketInfo);
-          setShowTicketDetails(true);
-          showResult('✅ Ticket verified successfully. Ready for activation.', 'success');
-        }
+        setTicketDetails(usedTicketInfo);
+        setShowTicketDetails(true);
+        showResult(`❌ ${t.ticketUsed}`, 'error');
       } else {
-        showResult(`❌ ${t.errorActivation}`, 'error');
+        // Ticket is valid, show details
+        const ticketInfo = {
+          success: true,
+          ticket_number: ticket.full_ticket_id,
+          booking_number: ticket.short_booking_id,
+          activity_title: ticket.activity_title,
+          activity_location: ticket.activity_location,
+          customer_name: ticket.customer_name,
+          customer_email: ticket.customer_email,
+          customer_phone: ticket.customer_phone,
+          ticket_type: ticket.ticket_type,
+          total_amount: ticket.total_price,
+          payment_method: ticket.payment_method,
+          // Individual pricing from the ticket
+          unit_price: ticket.unit_price,
+          service_fee: ticket.service_fee,
+          total_price: ticket.total_price,
+          activity_image: ticket.activity_image_url
+        };
+
+        setTicketDetails(ticketInfo);
+        setShowTicketDetails(true);
+        showResult('✅ Ticket verified successfully. Ready for activation.', 'success');
       }
     } catch (error) {
       console.error('Ticket check error:', error);
@@ -481,7 +375,7 @@ const PublicActivationPage = () => {
 
     // For cash on arrival, validate amount
     if (ticketDetails?.payment_method === 'cash_on_arrival') {
-      if (!collectedAmount.trim() || parseFloat(collectedAmount) < (ticketDetails.ticket_price || 0)) {
+      if (!collectedAmount.trim() || parseFloat(collectedAmount) < (ticketDetails.total_price || 0)) {
         showResult(t.errorAmount, 'error');
         return;
       }
@@ -491,30 +385,30 @@ const PublicActivationPage = () => {
     setResult(null);
 
     try {
-      // Update ticket status directly in the database
-      const { data: updateData, error: updateError } = await supabase
-        .from('tickets')
-        .update({
-          status: 'used',
-          activated_by: activatorName.trim(),
-          activated_at: new Date().toISOString(),
-          collected_amount:
-            ticketDetails?.payment_method === 'cash_on_arrival'
-              ? parseFloat(collectedAmount)
-              : null
-        })
-        .eq('qr_code', qrCode.trim())
-        .eq('status', 'valid')
-        .select()
-        .single();
+      console.log('Activating ticket with QR code:', qrCode.trim());
 
-      if (updateError) {
-        if (updateError.code === 'PGRST116') {
-          showResult(`❌ ${t.ticketUsed}: This ticket has already been used or is invalid.`, 'error');
-        } else {
-          showResult(`❌ ${language === 'ar' ? 'خطأ:' : 'Error:'} ${updateError.message}`, 'error');
+      // Use the new RPC function for public activation
+      const { data: activationData, error: activationError } = await supabase.rpc(
+        'activate_public_ticket',
+        {
+          p_qr_code: qrCode.trim(),
+          p_activator_name: activatorName.trim(),
+          p_collected_amount: ticketDetails?.payment_method === 'cash_on_arrival' 
+            ? parseFloat(collectedAmount) 
+            : null
         }
-      } else if (updateData) {
+      );
+
+      console.log('RPC Activation Response:', { activationData, activationError });
+
+      if (activationError) {
+        console.error('Activation RPC Error:', activationError);
+        showResult(`❌ ${t.errorActivation}: ${activationError.message}`, 'error');
+        setLoading(false);
+        return;
+      }
+
+      if (activationData && activationData.success) {
         const successMessage =
           ticketDetails?.payment_method === 'cash_on_arrival'
             ? t.cashCollectionMessage
@@ -583,16 +477,19 @@ const PublicActivationPage = () => {
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
         }
+
         .modern-activation-page.rtl {
           direction: rtl;
           font-family: 'Noto Sans Arabic', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
+
         .modern-header {
           background: rgba(255, 255, 255, 0.95);
           backdrop-filter: blur(20px);
           border-bottom: 1px solid rgba(255, 255, 255, 0.2);
           box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
         }
+
         .modern-header-content {
           max-width: 1200px;
           margin: 0 auto;
@@ -603,10 +500,12 @@ const PublicActivationPage = () => {
           flex-wrap: wrap;
           gap: 20px;
         }
+
         .modern-title-section {
           text-align: center;
           flex: 1;
         }
+
         .modern-title {
           font-size: 3rem;
           font-weight: 800;
@@ -616,11 +515,13 @@ const PublicActivationPage = () => {
           background-clip: text;
           margin-bottom: 8px;
         }
+
         .modern-subtitle {
           color: #6b7280;
           font-size: 1.125rem;
           font-weight: 500;
         }
+
         .modern-lang-toggle {
           display: flex;
           background: #f3f4f6;
@@ -628,6 +529,7 @@ const PublicActivationPage = () => {
           padding: 4px;
           gap: 4px;
         }
+
         .modern-lang-btn {
           padding: 8px 16px;
           border: none;
@@ -638,16 +540,19 @@ const PublicActivationPage = () => {
           cursor: pointer;
           transition: all 0.3s ease;
         }
+
         .modern-lang-btn.active {
           background: white;
           color: #667eea;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
+
         .modern-container {
           max-width: 1200px;
           margin: 0 auto;
           padding: 40px 20px;
         }
+
         .modern-card {
           background: rgba(255, 255, 255, 0.95);
           backdrop-filter: blur(20px);
@@ -657,6 +562,7 @@ const PublicActivationPage = () => {
           margin-bottom: 32px;
           overflow: hidden;
         }
+
         .modern-card-header {
           padding: 32px 32px 24px;
           display: flex;
@@ -664,6 +570,7 @@ const PublicActivationPage = () => {
           gap: 12px;
           border-bottom: 1px solid rgba(0, 0, 0, 0.05);
         }
+
         .modern-icon {
           width: 32px;
           height: 32px;
@@ -676,23 +583,28 @@ const PublicActivationPage = () => {
           font-size: 16px;
           font-weight: bold;
         }
+
         .modern-card-title {
           font-size: 1.5rem;
           font-weight: 700;
           color: #1f2937;
           margin: 0;
         }
+
         .modern-card-content {
           padding: 32px;
         }
+
         .modern-form {
           display: flex;
           flex-direction: column;
           gap: 20px;
         }
+
         .modern-input-group {
           position: relative;
         }
+
         .modern-input {
           width: 100%;
           padding: 16px 20px;
@@ -703,15 +615,18 @@ const PublicActivationPage = () => {
           transition: all 0.3s ease;
           box-sizing: border-box;
         }
+
         .modern-input:focus {
           outline: none;
           border-color: #667eea;
           box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
+
         .modern-input:disabled {
           background: #f9fafb;
           color: #9ca3af;
         }
+
         .modern-input-icon {
           position: absolute;
           right: 16px;
@@ -720,10 +635,12 @@ const PublicActivationPage = () => {
           color: #9ca3af;
           font-size: 18px;
         }
+
         .modern-button-group {
           display: flex;
           gap: 12px;
         }
+
         .modern-btn {
           padding: 16px 24px;
           border: none;
@@ -739,37 +656,45 @@ const PublicActivationPage = () => {
           text-decoration: none;
           box-sizing: border-box;
         }
+
         .modern-btn-primary {
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
           color: white;
           flex: 1;
         }
+
         .modern-btn-primary:hover:not(:disabled) {
           transform: translateY(-2px);
           box-shadow: 0 12px 24px rgba(102, 126, 234, 0.4);
         }
+
         .modern-btn-secondary {
           background: #f3f4f6;
           color: #374151;
           border: 2px solid #e5e7eb;
         }
+
         .modern-btn-secondary:hover:not(:disabled) {
           background: #e5e7eb;
           border-color: #d1d5db;
         }
+
         .modern-btn-success {
           background: linear-gradient(135deg, #10b981 0%, #059669 100%);
           color: white;
         }
+
         .modern-btn-success:hover:not(:disabled) {
           transform: translateY(-2px);
           box-shadow: 0 12px 24px rgba(16, 185, 129, 0.4);
         }
+
         .modern-btn:disabled {
           opacity: 0.6;
           cursor: not-allowed;
           transform: none !important;
         }
+
         .modern-spinner {
           width: 20px;
           height: 20px;
@@ -778,15 +703,18 @@ const PublicActivationPage = () => {
           border-radius: 50%;
           animation: spin 1s linear infinite;
         }
+
         @keyframes spin {
           to {
             transform: rotate(360deg);
           }
         }
+
         .modern-loading {
           text-align: center;
           padding: 60px 20px;
         }
+
         .modern-loading .modern-spinner {
           width: 48px;
           height: 48px;
@@ -794,6 +722,7 @@ const PublicActivationPage = () => {
           border-top-color: #667eea;
           margin: 0 auto 20px;
         }
+
         .modern-alert {
           padding: 20px;
           border-radius: 16px;
@@ -803,25 +732,30 @@ const PublicActivationPage = () => {
           gap: 12px;
           font-weight: 500;
         }
+
         .modern-alert-success {
           background: #ecfdf5;
           border: 1px solid #d1fae5;
           color: #065f46;
         }
+
         .modern-alert-error {
           background: #fef2f2;
           border: 1px solid #fecaca;
           color: #991b1b;
         }
+
         .modern-alert-info {
           background: #eff6ff;
           border: 1px solid #dbeafe;
           color: #1e40af;
         }
+
         .modern-alert-icon {
           font-size: 20px;
           margin-top: 2px;
         }
+
         .modern-ticket-image {
           height: 200px;
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -829,16 +763,19 @@ const PublicActivationPage = () => {
           overflow: hidden;
           margin: -32px -32px 32px;
         }
+
         .modern-ticket-image img {
           width: 100%;
           height: 100%;
           object-fit: cover;
         }
+
         .modern-ticket-image-overlay {
           position: absolute;
           inset: 0;
           background: linear-gradient(to top, rgba(0, 0, 0, 0.6) 0%, transparent 50%);
         }
+
         .modern-ticket-image-content {
           position: absolute;
           bottom: 24px;
@@ -846,17 +783,20 @@ const PublicActivationPage = () => {
           right: 32px;
           color: white;
         }
+
         .modern-ticket-image-title {
           font-size: 1.5rem;
           font-weight: 700;
           margin-bottom: 8px;
         }
+
         .modern-ticket-image-location {
           display: flex;
           align-items: center;
           gap: 6px;
           opacity: 0.9;
         }
+
         .modern-status-badge {
           display: inline-flex;
           align-items: center;
@@ -868,26 +808,31 @@ const PublicActivationPage = () => {
           text-transform: uppercase;
           letter-spacing: 0.025em;
         }
+
         .modern-status-valid {
           background: #ecfdf5;
           color: #065f46;
           border: 1px solid #d1fae5;
         }
+
         .modern-status-used {
           background: #fef2f2;
           color: #991b1b;
           border: 1px solid #fecaca;
         }
+
         .modern-info-grid {
           display: grid;
           gap: 16px;
           margin-bottom: 32px;
         }
+
         @media (min-width: 768px) {
           .modern-info-grid {
             grid-template-columns: repeat(2, 1fr);
           }
         }
+
         .modern-info-item {
           background: #f8fafc;
           padding: 20px;
@@ -896,25 +841,30 @@ const PublicActivationPage = () => {
           align-items: center;
           gap: 12px;
         }
+
         .modern-info-icon {
           width: 20px;
           height: 20px;
           color: #6b7280;
           font-size: 16px;
         }
+
         .modern-info-content {
           flex: 1;
         }
+
         .modern-info-label {
           font-size: 0.875rem;
           color: #6b7280;
           margin-bottom: 4px;
           font-weight: 500;
         }
+
         .modern-info-value {
           font-weight: 600;
           color: #1f2937;
         }
+
         .modern-cash-collection {
           background: #fef3c7;
           border: 2px solid #f59e0b;
@@ -922,6 +872,7 @@ const PublicActivationPage = () => {
           padding: 24px;
           margin-bottom: 24px;
         }
+
         .modern-cash-collection-header {
           display: flex;
           align-items: center;
@@ -930,32 +881,38 @@ const PublicActivationPage = () => {
           color: #92400e;
           font-weight: 600;
         }
+
         .modern-instructions {
           background: white;
           border-radius: 24px;
           padding: 32px;
           box-shadow: 0 20px 50px rgba(0, 0, 0, 0.1);
         }
+
         .modern-instructions-header {
           display: flex;
           align-items: center;
           gap: 12px;
           margin-bottom: 24px;
         }
+
         .modern-instructions-grid {
           display: grid;
           gap: 24px;
         }
+
         @media (min-width: 768px) {
           .modern-instructions-grid {
             grid-template-columns: repeat(2, 1fr);
           }
         }
+
         .modern-instruction-item {
           display: flex;
           align-items: flex-start;
           gap: 16px;
         }
+
         .modern-instruction-number {
           width: 32px;
           height: 32px;
@@ -969,10 +926,12 @@ const PublicActivationPage = () => {
           font-size: 0.875rem;
           flex-shrink: 0;
         }
+
         .modern-instruction-text {
           color: #374151;
           line-height: 1.6;
         }
+
         .modern-footer {
           background: rgba(255, 255, 255, 0.95);
           backdrop-filter: blur(20px);
@@ -981,6 +940,7 @@ const PublicActivationPage = () => {
           text-align: center;
           box-shadow: 0 20px 50px rgba(0, 0, 0, 0.1);
         }
+
         .modern-footer-title {
           font-size: 1.25rem;
           font-weight: 700;
@@ -990,10 +950,12 @@ const PublicActivationPage = () => {
           background-clip: text;
           margin-bottom: 8px;
         }
+
         .modern-footer-text {
           color: #6b7280;
           margin-bottom: 16px;
         }
+
         .modern-footer-support {
           padding-top: 16px;
           border-top: 1px solid rgba(0, 0, 0, 0.05);
@@ -1004,6 +966,7 @@ const PublicActivationPage = () => {
           justify-content: center;
           gap: 8px;
         }
+
         .modern-camera-modal {
           position: fixed;
           inset: 0;
@@ -1015,6 +978,7 @@ const PublicActivationPage = () => {
           z-index: 1000;
           padding: 20px;
         }
+
         .modern-camera-content {
           background: white;
           border-radius: 24px;
@@ -1024,17 +988,20 @@ const PublicActivationPage = () => {
           max-height: 90vh;
           overflow-y: auto;
         }
+
         .modern-camera-header {
           display: flex;
           align-items: center;
           justify-content: space-between;
           margin-bottom: 24px;
         }
+
         .modern-camera-title {
           font-size: 1.25rem;
           font-weight: 700;
           color: #1f2937;
         }
+
         .modern-camera-close {
           width: 40px;
           height: 40px;
@@ -1047,29 +1014,27 @@ const PublicActivationPage = () => {
           cursor: pointer;
           transition: all 0.3s ease;
         }
+
         .modern-camera-close:hover {
           background: #e5e7eb;
         }
+
         .modern-camera-video {
           width: 100%;
           height: 280px;
           background: #000;
           border-radius: 16px;
-          margin-bottom: 10px;
+          margin-bottom: 20px;
           object-fit: cover;
         }
+
         .modern-camera-hint {
           text-align: center;
           color: #6b7280;
-          margin-bottom: 16px;
+          margin-bottom: 24px;
           line-height: 1.5;
         }
-        .modern-scan-status {
-          text-align: center;
-          font-size: 0.9rem;
-          color: #1e40af;
-          margin-bottom: 16px;
-        }
+
         .modern-used-ticket-info {
           background: #fef2f2;
           border: 2px solid #fecaca;
@@ -1077,6 +1042,7 @@ const PublicActivationPage = () => {
           padding: 24px;
           margin-top: 24px;
         }
+
         .modern-used-ticket-header {
           display: flex;
           align-items: center;
@@ -1085,47 +1051,61 @@ const PublicActivationPage = () => {
           color: #991b1b;
           font-weight: 600;
         }
+
         .modern-used-ticket-details {
           display: grid;
           gap: 8px;
           font-size: 0.875rem;
         }
+
         @media (min-width: 768px) {
           .modern-used-ticket-details {
             grid-template-columns: repeat(2, 1fr);
           }
         }
+
         .modern-used-ticket-detail {
           color: #991b1b;
         }
+
         .modern-used-ticket-detail strong {
           color: #7f1d1d;
         }
+
+        /* Responsive adjustments */
         @media (max-width: 768px) {
           .modern-title {
             font-size: 2rem;
           }
+
           .modern-header-content {
             flex-direction: column;
             text-align: center;
           }
+
           .modern-container {
             padding: 20px 16px;
           }
+
           .modern-card-content {
             padding: 20px;
           }
+
           .modern-button-group {
             flex-direction: column;
           }
+
           .modern-btn-secondary {
             order: -1;
           }
         }
+
+        /* RTL adjustments */
         .modern-activation-page.rtl .modern-input-icon {
           right: auto;
           left: 16px;
         }
+
         .modern-activation-page.rtl .modern-ticket-image-content {
           left: auto;
           right: 32px;
@@ -1184,12 +1164,7 @@ const PublicActivationPage = () => {
               </div>
 
               <div className="modern-button-group">
-                <button
-                  id="checkTicketBtn"
-                  type="submit"
-                  className="modern-btn modern-btn-primary"
-                  disabled={loading}
-                >
+                <button type="submit" className="modern-btn modern-btn-primary" disabled={loading}>
                   {loading ? (
                     <>
                       <div className="modern-spinner"></div>
@@ -1230,16 +1205,7 @@ const PublicActivationPage = () => {
                 muted
                 className="modern-camera-video"
               />
-              <p className="modern-camera-hint">{
-                scannerSupported
-                  ? 'Position the QR code within the camera view'
-                  : t.scannerUnsupported
-              }</p>
-              {scannerSupported && (
-                <div className="modern-scan-status">
-                  {scanning ? 'Scanning…' : 'Initializing camera…'}
-                </div>
-              )}
+              <p className="modern-camera-hint">Position the QR code within the camera view</p>
               <button onClick={stopCamera} className="modern-btn modern-btn-secondary" style={{ width: '100%' }}>
                 {t.closeCamera}
               </button>
@@ -1368,7 +1334,23 @@ const PublicActivationPage = () => {
                   <span className="modern-info-icon">💰</span>
                   <div className="modern-info-content">
                     <div className="modern-info-label">{t.ticketPrice}</div>
-                    <div className="modern-info-value">{ticketDetails.ticket_price} JOD</div>
+                    <div className="modern-info-value">{ticketDetails.unit_price} JOD</div>
+                  </div>
+                </div>
+
+                <div className="modern-info-item">
+                  <span className="modern-info-icon">💸</span>
+                  <div className="modern-info-content">
+                    <div className="modern-info-label">{t.serviceFee}</div>
+                    <div className="modern-info-value">{ticketDetails.service_fee} JOD</div>
+                  </div>
+                </div>
+
+                <div className="modern-info-item">
+                  <span className="modern-info-icon">💳</span>
+                  <div className="modern-info-content">
+                    <div className="modern-info-label">{t.totalPrice}</div>
+                    <div className="modern-info-value">{ticketDetails.total_price} JOD</div>
                   </div>
                 </div>
               </div>
@@ -1416,8 +1398,8 @@ const PublicActivationPage = () => {
                             value={collectedAmount}
                             onChange={(e) => setCollectedAmount(e.target.value)}
                             className="modern-input"
-                            placeholder={`${t.amountPlaceholder} (${ticketDetails.ticket_price || 0} JOD)`}
-                            min={ticketDetails.ticket_price || 0}
+                            placeholder={`${t.amountPlaceholder} (${ticketDetails.total_price || 0} JOD)`}
+                            min={ticketDetails.total_price || 0}
                             step="0.01"
                             required
                             autoComplete="off"

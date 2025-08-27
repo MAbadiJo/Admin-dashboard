@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import './WebActivationPage.css'; // Keep using your existing CSS
 import { supabase } from './supabaseClient';
 
@@ -137,6 +137,8 @@ const PublicActivationPage = () => {
       ticketDetails: 'Ticket Details',
       paymentMethod: 'Payment Method',
       ticketPrice: 'Ticket Price',
+      serviceFee: 'Service Fee',
+      totalPrice: 'Total Price',
       requiresCashCollection: 'This ticket requires cash collection',
       cashOnArrival: 'Cash on Arrival',
       alreadyPaid: 'Already Paid',
@@ -189,6 +191,8 @@ const PublicActivationPage = () => {
       ticketDetails: 'تفاصيل التذكرة',
       paymentMethod: 'طريقة الدفع',
       ticketPrice: 'سعر التذكرة',
+      serviceFee: 'رسوم الخدمة',
+      totalPrice: 'السعر الإجمالي',
       requiresCashCollection: 'هذه التذكرة تتطلب تحصيل نقدي',
       cashOnArrival: 'الدفع عند الوصول',
       alreadyPaid: 'مدفوع مسبقاً',
@@ -273,117 +277,80 @@ const PublicActivationPage = () => {
     try {
       console.log('Checking ticket with QR code:', qrCode.trim());
 
-      // First get the ticket details
-      const { data: ticketData, error: ticketError } = await supabase
-        .from('tickets')
-        .select('*')
-        .eq('qr_code', qrCode.trim())
-        .single();
+      // Use the new RPC function for public access
+      const { data: ticketData, error: ticketError } = await supabase.rpc(
+        'get_public_ticket_details',
+        { p_qr_code: qrCode.trim() }
+      );
 
-      console.log('Ticket Query Response:', { ticketData, ticketError });
+      console.log('RPC Response:', { ticketData, ticketError });
 
       if (ticketError) {
-        console.error('Ticket check error:', ticketError);
+        console.error('RPC Error:', ticketError);
+        showResult(`❌ ${t.errorActivation}: ${ticketError.message}`, 'error');
+        setLoading(false);
+        return;
+      }
 
-        // If ticket not found, show error
-        if (ticketError.code === 'PGRST116') {
-          showResult(`❌ ${t.ticketNotFound}: ${t.ticketNotFoundMessage}`, 'error');
-        } else {
-          showResult(`❌ ${language === 'ar' ? 'خطأ:' : 'Error:'} ${ticketError.message}`, 'error');
-        }
-      } else if (ticketData) {
-        const ticket = ticketData;
+      if (!ticketData) {
+        showResult(`❌ ${t.ticketNotFound}: ${t.ticketNotFoundMessage}`, 'error');
+        setLoading(false);
+        return;
+      }
 
-        // Get booking details
-        const { data: bookingData, error: bookingError } = await supabase
-          .from('bookings')
-          .select('*')
-          .eq('id', ticket.booking_id)
-          .single();
+      const ticket = ticketData;
 
-        if (bookingError) {
-          console.error('Booking query error:', bookingError);
-          showResult(`❌ ${language === 'ar' ? 'خطأ:' : 'Error:'} Could not load booking details`, 'error');
-          return;
-        }
+      // Check if ticket is already used
+      if (ticket.status === 'used') {
+        const usedTicketInfo = {
+          success: false,
+          message: 'Ticket already used',
+          ticket_number: ticket.full_ticket_id,
+          booking_number: ticket.short_booking_id,
+          activity_title: ticket.activity_title,
+          activity_location: ticket.activity_location,
+          customer_name: ticket.customer_name,
+          customer_email: ticket.customer_email,
+          customer_phone: ticket.customer_phone,
+          ticket_type: ticket.ticket_type,
+          total_amount: ticket.total_price,
+          payment_method: ticket.payment_method,
+          used_by: ticket.activated_by,
+          used_at: ticket.activated_at,
+          activity_image: ticket.activity_image_url,
+          // Individual pricing from the ticket
+          unit_price: ticket.unit_price,
+          service_fee: ticket.service_fee,
+          total_price: ticket.total_price
+        };
 
-        const booking = bookingData;
-
-        // Get profile details
-        const { data: profileData, error: profileError } = await supabase
-          .from('profiles')
-          .select('name, email, phone')
-          .eq('id', booking.user_id)
-          .single();
-
-        if (profileError) {
-          console.error('Profile query error:', profileError);
-          // Continue without profile data
-        }
-
-        const profile = profileData;
-
-        // Get activity details
-        const { data: activityData, error: activityError } = await supabase
-          .from('activities')
-          .select('title, title_ar, location, location_ar, image_url, price')
-          .eq('id', booking.activity_id)
-          .single();
-
-        if (activityError) {
-          console.error('Activity query error:', activityError);
-          // Continue without activity data
-        }
-
-        const activity = activityData;
-
-        // Check if ticket is already used
-        if (ticket.status === 'used') {
-          const usedTicketInfo = {
-            success: false,
-            message: 'Ticket already used',
-            ticket_number: ticket.full_ticket_id || ticket.ticket_number,
-            booking_number: booking?.booking_number,
-            activity_title: activity?.title,
-            activity_location: activity?.location,
-            customer_name: profile?.name,
-            customer_email: profile?.email,
-            customer_phone: profile?.phone,
-            ticket_type: ticket.ticket_type,
-            total_amount: activity?.price || 0, // Use activity price as ticket price
-            payment_method: booking?.payment_method,
-            used_by: ticket.activated_by,
-            used_at: ticket.activated_at,
-            activity_image: activity?.image_url
-          };
-
-          setTicketDetails(usedTicketInfo);
-          setShowTicketDetails(true);
-          showResult(`❌ ${t.ticketUsed}`, 'error');
-        } else {
-          // Ticket is valid, show details
-          const ticketInfo = {
-            success: true,
-            ticket_number: ticket.full_ticket_id || ticket.ticket_number,
-            booking_number: booking?.booking_number,
-            activity_title: activity?.title,
-            activity_location: activity?.location,
-            customer_name: profile?.name,
-            customer_email: profile?.email,
-            customer_phone: profile?.phone,
-            ticket_type: ticket.ticket_type,
-            total_amount: activity?.price || 0, // Use activity price as ticket price
-            payment_method: booking?.payment_method,
-            ticket_price: activity?.price || 0, // Use activity price as ticket price
-            activity_image: activity?.image_url
-          };
-
-          setTicketDetails(ticketInfo);
-          setShowTicketDetails(true);
-          showResult('✅ Ticket verified successfully. Ready for activation.', 'success');
-        }
+        setTicketDetails(usedTicketInfo);
+        setShowTicketDetails(true);
+        showResult(`❌ ${t.ticketUsed}`, 'error');
       } else {
-        showResult(`❌ ${t.errorActivation}`, 'error');
+        // Ticket is valid, show details
+        const ticketInfo = {
+          success: true,
+          ticket_number: ticket.full_ticket_id,
+          booking_number: ticket.short_booking_id,
+          activity_title: ticket.activity_title,
+          activity_location: ticket.activity_location,
+          customer_name: ticket.customer_name,
+          customer_email: ticket.customer_email,
+          customer_phone: ticket.customer_phone,
+          ticket_type: ticket.ticket_type,
+          total_amount: ticket.total_price,
+          payment_method: ticket.payment_method,
+          // Individual pricing from the ticket
+          unit_price: ticket.unit_price,
+          service_fee: ticket.service_fee,
+          total_price: ticket.total_price,
+          activity_image: ticket.activity_image_url
+        };
+
+        setTicketDetails(ticketInfo);
+        setShowTicketDetails(true);
+        showResult('✅ Ticket verified successfully. Ready for activation.', 'success');
       }
     } catch (error) {
       console.error('Ticket check error:', error);
@@ -408,7 +375,7 @@ const PublicActivationPage = () => {
 
     // For cash on arrival, validate amount
     if (ticketDetails?.payment_method === 'cash_on_arrival') {
-      if (!collectedAmount.trim() || parseFloat(collectedAmount) < (ticketDetails.ticket_price || 0)) {
+      if (!collectedAmount.trim() || parseFloat(collectedAmount) < (ticketDetails.total_price || 0)) {
         showResult(t.errorAmount, 'error');
         return;
       }
@@ -420,34 +387,28 @@ const PublicActivationPage = () => {
     try {
       console.log('Activating ticket with QR code:', qrCode.trim());
 
-      // Update ticket status directly in the database
-      const { data: updateData, error: updateError } = await supabase
-        .from('tickets')
-        .update({
-          status: 'used',
-          activated_by: activatorName.trim(),
-          activated_at: new Date().toISOString(),
-          collected_amount:
-            ticketDetails?.payment_method === 'cash_on_arrival'
-              ? parseFloat(collectedAmount)
-              : null
-        })
-        .eq('qr_code', qrCode.trim())
-        .eq('status', 'valid')
-        .select()
-        .single();
-
-      console.log('Update Response:', { updateData, updateError });
-
-      if (updateError) {
-        console.error('Activation error:', updateError);
-
-        if (updateError.code === 'PGRST116') {
-          showResult(`❌ ${t.ticketUsed}: This ticket has already been used or is invalid.`, 'error');
-        } else {
-          showResult(`❌ ${language === 'ar' ? 'خطأ:' : 'Error:'} ${updateError.message}`, 'error');
+      // Use the new RPC function for public activation
+      const { data: activationData, error: activationError } = await supabase.rpc(
+        'activate_public_ticket',
+        {
+          p_qr_code: qrCode.trim(),
+          p_activator_name: activatorName.trim(),
+          p_collected_amount: ticketDetails?.payment_method === 'cash_on_arrival' 
+            ? parseFloat(collectedAmount) 
+            : null
         }
-      } else if (updateData) {
+      );
+
+      console.log('RPC Activation Response:', { activationData, activationError });
+
+      if (activationError) {
+        console.error('Activation RPC Error:', activationError);
+        showResult(`❌ ${t.errorActivation}: ${activationError.message}`, 'error');
+        setLoading(false);
+        return;
+      }
+
+      if (activationData && activationData.success) {
         const successMessage =
           ticketDetails?.payment_method === 'cash_on_arrival'
             ? t.cashCollectionMessage
@@ -1373,7 +1334,23 @@ const PublicActivationPage = () => {
                   <span className="modern-info-icon">💰</span>
                   <div className="modern-info-content">
                     <div className="modern-info-label">{t.ticketPrice}</div>
-                    <div className="modern-info-value">{ticketDetails.ticket_price} JOD</div>
+                    <div className="modern-info-value">{ticketDetails.unit_price} JOD</div>
+                  </div>
+                </div>
+
+                <div className="modern-info-item">
+                  <span className="modern-info-icon">💸</span>
+                  <div className="modern-info-content">
+                    <div className="modern-info-label">{t.serviceFee}</div>
+                    <div className="modern-info-value">{ticketDetails.service_fee} JOD</div>
+                  </div>
+                </div>
+
+                <div className="modern-info-item">
+                  <span className="modern-info-icon">💳</span>
+                  <div className="modern-info-content">
+                    <div className="modern-info-label">{t.totalPrice}</div>
+                    <div className="modern-info-value">{ticketDetails.total_price} JOD</div>
                   </div>
                 </div>
               </div>
@@ -1421,8 +1398,8 @@ const PublicActivationPage = () => {
                             value={collectedAmount}
                             onChange={(e) => setCollectedAmount(e.target.value)}
                             className="modern-input"
-                            placeholder={`${t.amountPlaceholder} (${ticketDetails.ticket_price || 0} JOD)`}
-                            min={ticketDetails.ticket_price || 0}
+                            placeholder={`${t.amountPlaceholder} (${ticketDetails.total_price || 0} JOD)`}
+                            min={ticketDetails.total_price || 0}
                             step="0.01"
                             required
                             autoComplete="off"
